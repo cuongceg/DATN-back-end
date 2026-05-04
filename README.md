@@ -75,6 +75,11 @@ npm start
 
 - http://localhost:3000
 
+## API Documentation (Swagger)
+
+- Swagger UI: http://localhost:3000/api-docs
+- OpenAPI JSON: http://localhost:3000/api-docs.json
+
 ## Docker Commands
 
 Start PostgreSQL:
@@ -105,19 +110,26 @@ docker compose up -d
 
 ### Users
 
+- GET /api/users/search?query=<keyword> (auth required, excludes admin and caller)
 - DELETE /api/users/:id (admin only)
 
 ### Classes
 
 Teacher only:
 - POST /api/classes
-- GET /api/classes
+- GET /api/classes/:id
 - PUT /api/classes/:id
 - DELETE /api/classes/:id
 - POST /api/classes/:id/members
+- POST /api/classes/:id/members/bulk
+- PATCH /api/classes/:id/members/:userId/role
+- DELETE /api/classes/:id/members/:userId
 
 Student only:
-- POST /api/classes/:id/join
+- POST /api/classes/join (body: class_code)
+
+All authenticated roles:
+- GET /api/classes
 
 ## Authorization
 
@@ -133,3 +145,4 @@ Authorization: Bearer <jwt_token>
 - JWT payload includes user id and role.
 - Ownership checks are enforced for teacher class updates/deletes/member management.
 - Duplicate email and duplicate class membership are handled gracefully.
+- class_members includes permission with allowed values: Member, Owner.
