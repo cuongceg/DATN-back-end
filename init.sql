@@ -13,6 +13,10 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'artifact_status') THEN
         CREATE TYPE artifact_status AS ENUM ('processing', 'failed', 'completed');
     END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'class_member_permission') THEN
+        CREATE TYPE class_member_permission AS ENUM ('Member', 'Owner');
+    END IF;
 END
 $$;
 
@@ -27,9 +31,12 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS classes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     teacher_id UUID NOT NULL,
+    class_code VARCHAR(6) NOT NULL UNIQUE,
     name VARCHAR(255) NOT NULL,
     description TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT chk_classes_class_code_format
+        CHECK (class_code ~ '^[A-Z0-9]{6}$'),
     CONSTRAINT fk_classes_teacher
         FOREIGN KEY (teacher_id)
         REFERENCES users(id)
@@ -39,6 +46,7 @@ CREATE TABLE IF NOT EXISTS classes (
 CREATE TABLE IF NOT EXISTS class_members (
     class_id UUID NOT NULL,
     student_id UUID NOT NULL,
+    permission class_member_permission NOT NULL DEFAULT 'Member',
     joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (class_id, student_id),
     CONSTRAINT fk_class_members_class
