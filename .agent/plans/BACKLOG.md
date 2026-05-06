@@ -1,6 +1,6 @@
 # CURRENT_TASKS.md — Session (Meeting) Feature Backend
 
-> Cập nhật lần cuối: 2026-05-05
+> Cập nhật lần cuối: 2026-05-06
 > Trạng thái: 🚧 Đang phát triển
 
 ---

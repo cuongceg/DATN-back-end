@@ -323,6 +323,66 @@ Cập nhật thông tin lớp.
 	- `400 { "message": "At least one field (name, description) is required." }`
 	- `404 { "message": "Class not found or you do not own this class." }`
 
+#### PATCH `/api/classes/:id/archive`
+
+Archive lớp (active → archived).
+
+- Auth: Bắt buộc token
+- Roles: `teacher`
+
+- Success:
+	- `200`
+
+```json
+{
+	"message": "Class archived successfully.",
+	"class": {
+		"id": "uuid",
+		"teacher_id": "uuid",
+		"class_code": "AB12CD",
+		"name": "Lop Toan 10A",
+		"description": "On tap",
+		"status": "archived",
+		"created_at": "2026-04-25T10:00:00.000Z"
+	}
+}
+```
+
+- Error:
+	- `400 { "message": "id must be a valid UUID." }`
+	- `404 { "message": "Class not found or you do not own this class." }`
+	- `409 { "message": "Only active classes can be archived." }`
+
+#### PATCH `/api/classes/:id/activate`
+
+Active lại lớp (archived → active).
+
+- Auth: Bắt buộc token
+- Roles: `teacher`
+
+- Success:
+	- `200`
+
+```json
+{
+	"message": "Class activated successfully.",
+	"class": {
+		"id": "uuid",
+		"teacher_id": "uuid",
+		"class_code": "AB12CD",
+		"name": "Lop Toan 10A",
+		"description": "On tap",
+		"status": "active",
+		"created_at": "2026-04-25T10:00:00.000Z"
+	}
+}
+```
+
+- Error:
+	- `400 { "message": "id must be a valid UUID." }`
+	- `404 { "message": "Class not found or you do not own this class." }`
+	- `409 { "message": "Only archived classes can be activated." }`
+
 #### DELETE `/api/classes/:id`
 
 Xóa lớp.
@@ -567,7 +627,8 @@ Tạo session mới.
 {
 	"classId": "uuid",
 	"title": "Buoi hoc 1",
-	"scheduledAt": "2026-05-05T08:00:00.000Z"
+	"scheduledAt": "2026-05-05T08:00:00.000Z",
+	"scheduledEndAt": "2026-05-05T09:30:00.000Z"
 }
 ```
 
@@ -575,6 +636,7 @@ Tạo session mới.
 	- `classId`: UUID hợp lệ
 	- `title`: required
 	- `scheduledAt`: ISO date (optional)
+	- `scheduledEndAt`: ISO date (optional, nếu có cả 2 thì `scheduledEndAt > scheduledAt`)
 
 - Success:
 	- `201`
@@ -587,6 +649,8 @@ Tạo session mới.
 		"class_id": "uuid",
 		"livekit_room_id": null,
 		"title": "Buoi hoc 1",
+		"scheduled_at": "2026-05-05T08:00:00.000Z",
+		"scheduled_end_at": "2026-05-05T09:30:00.000Z",
 		"start_time": null,
 		"end_time": null,
 		"status": "scheduled"
@@ -618,6 +682,8 @@ Lấy danh sách session của 1 lớp.
 			"class_id": "uuid",
 			"livekit_room_id": null,
 			"title": "Buoi hoc 1",
+			"scheduled_at": "2026-05-05T08:00:00.000Z",
+			"scheduled_end_at": "2026-05-05T09:30:00.000Z",
 			"start_time": null,
 			"end_time": null,
 			"status": "scheduled"
@@ -643,6 +709,8 @@ Lấy chi tiết 1 session.
 		"class_id": "uuid",
 		"livekit_room_id": "uuid",
 		"title": "Buoi hoc 1",
+		"scheduled_at": "2026-05-05T08:00:00.000Z",
+		"scheduled_end_at": "2026-05-05T09:30:00.000Z",
 		"start_time": "2026-05-05T08:00:00.000Z",
 		"end_time": null,
 		"status": "ongoing"
@@ -651,6 +719,108 @@ Lấy chi tiết 1 session.
 ```
 
 - Error:
+	- `404 { "message": "Session not found." }`
+
+#### GET `/api/sessions/my?from=<ISO>&to=<ISO>`
+
+Lấy tất cả sessions theo date range để hiển thị calendar.
+
+- Auth: Bắt buộc token
+- Roles: tất cả role đã đăng nhập
+- Query params:
+	- `from`: ISO date (bắt buộc)
+	- `to`: ISO date (bắt buộc)
+
+- Success:
+	- `200`
+
+```json
+{
+	"sessions": [
+		{
+			"id": "uuid",
+			"class_id": "uuid",
+			"class_name": "Lop Toan 10A",
+			"title": "Buoi hoc 1",
+			"scheduled_at": "2026-05-05T08:00:00.000Z",
+			"scheduled_end_at": "2026-05-05T09:30:00.000Z",
+			"start_time": null,
+			"end_time": null,
+			"status": "scheduled"
+		}
+	]
+}
+```
+
+- Error:
+	- `400 { "message": "from and to are required." }`
+	- `400 { "message": "from must be a valid ISO date." }`
+	- `400 { "message": "to must be a valid ISO date." }`
+
+#### PATCH `/api/sessions/:sessionId`
+
+Cập nhật lịch session (title / scheduledAt). Teacher sở hữu lớp mới được update.
+
+- Auth: Bắt buộc token
+- Roles: `teacher`
+- Body (ít nhất 1 field):
+
+```json
+{
+	"title": "Buoi hoc 1 - cap nhat",
+	"scheduledAt": "2026-05-06T08:00:00.000Z",
+	"scheduledEndAt": "2026-05-06T09:30:00.000Z"
+}
+```
+
+- Success:
+	- `200`
+
+```json
+{
+	"session": {
+		"id": "uuid",
+		"class_id": "uuid",
+		"livekit_room_id": null,
+		"title": "Buoi hoc 1 - cap nhat",
+		"scheduled_at": "2026-05-06T08:00:00.000Z",
+		"scheduled_end_at": "2026-05-06T09:30:00.000Z",
+		"start_time": null,
+		"end_time": null,
+		"status": "scheduled"
+	}
+}
+```
+
+- Error:
+	- `400 { "message": "At least one field (title, scheduledAt) is required." }`
+	- `400 { "message": "Cannot reschedule a session that is already ongoing or completed." }`
+	- `403 { "message": "You do not have permission to update this session." }`
+	- `404 { "message": "Session not found." }`
+
+#### DELETE `/api/sessions/:sessionId`
+
+Xóa session (chỉ xóa được session có status `scheduled`). Teacher sở hữu lớp mới được xóa.
+
+- Auth: Bắt buộc token
+- Roles: `teacher`
+
+- Success:
+	- `200`
+
+```json
+{
+	"message": "Session deleted successfully.",
+	"session": {
+		"id": "uuid",
+		"title": "Buoi hoc 1"
+	}
+}
+```
+
+- Error:
+	- `400 { "message": "Only scheduled sessions can be deleted." }`
+	- `403 { "message": "You do not have permission to delete this session." }`
 	- `404 { "message": "Session not found." }`
 
 #### PATCH `/api/sessions/:sessionId/start`
@@ -671,6 +841,8 @@ Start session (scheduled → ongoing). Teacher của lớp mới được start.
 		"class_id": "uuid",
 		"livekit_room_id": "uuid",
 		"title": "Buoi hoc 1",
+		"scheduled_at": "2026-05-05T08:00:00.000Z",
+		"scheduled_end_at": "2026-05-05T09:30:00.000Z",
 		"start_time": "2026-05-05T08:00:00.000Z",
 		"end_time": null,
 		"status": "ongoing"
@@ -700,6 +872,8 @@ End session (ongoing → completed). Teacher của lớp mới được end.
 		"class_id": "uuid",
 		"livekit_room_id": "uuid",
 		"title": "Buoi hoc 1",
+		"scheduled_at": "2026-05-05T08:00:00.000Z",
+		"scheduled_end_at": "2026-05-05T09:30:00.000Z",
 		"start_time": "2026-05-05T08:00:00.000Z",
 		"end_time": "2026-05-05T09:30:00.000Z",
 		"status": "completed"
