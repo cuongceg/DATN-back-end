@@ -15,14 +15,18 @@ async function createSession(req, res, next) {
     return res.status(403).json({ message: 'Only teachers can create sessions.' });
   }
 
-  const { classId, title, scheduledAt } = req.body;
+  const { classId, title, scheduledAt, scheduledEndAt } = req.body;
 
   if (!classId || !title) {
     return res.status(400).json({ message: 'classId and title are required.' });
   }
 
   try {
-    const session = await sessionService.createSession(classId, req.user.id, { title, scheduledAt });
+    const session = await sessionService.createSession(classId, req.user.id, {
+      title,
+      scheduledAt,
+      scheduledEndAt,
+    });
     return res.status(201).json({
       message: 'Session created successfully.',
       session,
@@ -49,6 +53,114 @@ async function getSessionById(req, res, next) {
   try {
     const session = await sessionService.getSessionById(sessionId);
     return res.status(200).json({ session });
+  } catch (error) {
+    return handleServiceError(res, error, next);
+  }
+}
+
+async function getMySessions(req, res, next) {
+  const { from, to } = req.query;
+
+  if (!from || !to) {
+    return res.status(400).json({ message: 'from and to are required.' });
+  }
+
+  const fromMs = Date.parse(from);
+  const toMs = Date.parse(to);
+
+  if (Number.isNaN(fromMs)) {
+    return res.status(400).json({ message: 'from must be a valid ISO date.' });
+  }
+
+  if (Number.isNaN(toMs)) {
+    return res.status(400).json({ message: 'to must be a valid ISO date.' });
+  }
+
+  try {
+    const sessions = await sessionService.getMySessions(req.user, {
+      from: new Date(fromMs),
+      to: new Date(toMs),
+    });
+
+    return res.status(200).json({ sessions });
+  } catch (error) {
+    return handleServiceError(res, error, next);
+  }
+}
+
+async function updateSession(req, res, next) {
+  const { sessionId } = req.params;
+
+  if (req.user.role !== 'teacher') {
+    return res.status(403).json({ message: 'Only teachers can update sessions.' });
+  }
+
+  const { title, scheduledAt, scheduledEndAt } = req.body;
+
+  const hasTitle = title !== undefined;
+  const hasScheduledAt = scheduledAt !== undefined;
+  const hasScheduledEndAt = scheduledEndAt !== undefined;
+
+  if (!hasTitle && !hasScheduledAt && !hasScheduledEndAt) {
+    return res.status(400).json({
+      message: 'At least one field (title, scheduledAt, scheduledEndAt) is required.',
+    });
+  }
+
+  if (hasTitle) {
+    if (typeof title !== 'string' || !title.trim()) {
+      return res.status(400).json({ message: 'title must be a non-empty string.' });
+    }
+  }
+
+  if (hasScheduledAt && scheduledAt !== null) {
+    const parsed = Date.parse(scheduledAt);
+    if (Number.isNaN(parsed)) {
+      return res.status(400).json({ message: 'scheduledAt must be a valid ISO date.' });
+    }
+  }
+
+  if (hasScheduledEndAt && scheduledEndAt !== null) {
+    const parsed = Date.parse(scheduledEndAt);
+    if (Number.isNaN(parsed)) {
+      return res.status(400).json({ message: 'scheduledEndAt must be a valid ISO date.' });
+    }
+  }
+
+  if (hasScheduledAt && scheduledAt !== null && hasScheduledEndAt && scheduledEndAt !== null) {
+    const startMs = Date.parse(scheduledAt);
+    const endMs = Date.parse(scheduledEndAt);
+    if (!Number.isNaN(startMs) && !Number.isNaN(endMs) && endMs <= startMs) {
+      return res.status(400).json({ message: 'scheduledEndAt must be after scheduledAt.' });
+    }
+  }
+
+  try {
+    const session = await sessionService.updateSession(sessionId, req.user.id, {
+      title: hasTitle ? title.trim() : undefined,
+      scheduledAt,
+      scheduledEndAt,
+    });
+
+    return res.status(200).json({ session });
+  } catch (error) {
+    return handleServiceError(res, error, next);
+  }
+}
+
+async function deleteSession(req, res, next) {
+  const { sessionId } = req.params;
+
+  if (req.user.role !== 'teacher') {
+    return res.status(403).json({ message: 'Only teachers can delete sessions.' });
+  }
+
+  try {
+    const deleted = await sessionService.deleteSession(sessionId, req.user.id);
+    return res.status(200).json({
+      message: 'Session deleted successfully.',
+      session: deleted,
+    });
   } catch (error) {
     return handleServiceError(res, error, next);
   }
@@ -185,6 +297,9 @@ module.exports = {
   createSession,
   getSessionsByClass,
   getSessionById,
+  getMySessions,
+  updateSession,
+  deleteSession,
   startSession,
   endSession,
   joinSession,

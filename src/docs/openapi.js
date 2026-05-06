@@ -75,6 +75,7 @@ const openapiSpec = {
           class_code: { type: 'string', example: 'A1B2C3' },
           name: { type: 'string' },
           description: { type: 'string', nullable: true },
+          status: { type: 'string', enum: ['active', 'archived'] },
           created_at: { type: 'string', format: 'date-time' },
         },
       },
@@ -160,6 +161,22 @@ const openapiSpec = {
           class_id: { type: 'string', format: 'uuid' },
           livekit_room_id: { type: 'string', nullable: true },
           title: { type: 'string' },
+          scheduled_at: { type: 'string', format: 'date-time', nullable: true },
+          scheduled_end_at: { type: 'string', format: 'date-time', nullable: true },
+          start_time: { type: 'string', format: 'date-time', nullable: true },
+          end_time: { type: 'string', format: 'date-time', nullable: true },
+          status: { type: 'string', enum: ['scheduled', 'ongoing', 'completed'] },
+        },
+      },
+      CalendarSession: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', format: 'uuid' },
+          class_id: { type: 'string', format: 'uuid' },
+          class_name: { type: 'string' },
+          title: { type: 'string' },
+          scheduled_at: { type: 'string', format: 'date-time', nullable: true },
+          scheduled_end_at: { type: 'string', format: 'date-time', nullable: true },
           start_time: { type: 'string', format: 'date-time', nullable: true },
           end_time: { type: 'string', format: 'date-time', nullable: true },
           status: { type: 'string', enum: ['scheduled', 'ongoing', 'completed'] },
@@ -172,6 +189,15 @@ const openapiSpec = {
           classId: { type: 'string', format: 'uuid' },
           title: { type: 'string' },
           scheduledAt: { type: 'string', format: 'date-time', nullable: true },
+          scheduledEndAt: { type: 'string', format: 'date-time', nullable: true },
+        },
+      },
+      UpdateSessionBody: {
+        type: 'object',
+        properties: {
+          title: { type: 'string' },
+          scheduledAt: { type: 'string', format: 'date-time', nullable: true },
+          scheduledEndAt: { type: 'string', format: 'date-time', nullable: true },
         },
       },
       JoinSessionResponse: {
@@ -585,6 +611,110 @@ const openapiSpec = {
         },
       },
     },
+    '/api/classes/{id}/activate': {
+      patch: {
+        tags: ['Classes'],
+        summary: 'Activate class (teacher owner only)',
+        description: "Activate a class (archived → active).",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            in: 'path',
+            name: 'id',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          200: {
+            description: 'Class activated',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    message: { type: 'string' },
+                    class: { $ref: '#/components/schemas/Class' },
+                  },
+                },
+              },
+            },
+          },
+          400: {
+            description: 'Invalid id',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          401: {
+            description: 'Unauthorized',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          403: {
+            description: 'Forbidden',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          404: {
+            description: 'Class not found or ownership mismatch',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          409: {
+            description: 'Invalid class status transition',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+        },
+      },
+    },
+    '/api/classes/{id}/archive': {
+      patch: {
+        tags: ['Classes'],
+        summary: 'Archive class (teacher owner only)',
+        description: "Archive a class (active → archived).",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            in: 'path',
+            name: 'id',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          200: {
+            description: 'Class archived',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    message: { type: 'string' },
+                    class: { $ref: '#/components/schemas/Class' },
+                  },
+                },
+              },
+            },
+          },
+          400: {
+            description: 'Invalid id',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          401: {
+            description: 'Unauthorized',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          403: {
+            description: 'Forbidden',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          404: {
+            description: 'Class not found or ownership mismatch',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          409: {
+            description: 'Invalid class status transition',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+        },
+      },
+    },
     '/api/classes/join': {
       post: {
         tags: ['Classes'],
@@ -914,6 +1044,55 @@ const openapiSpec = {
         },
       },
     },
+    '/api/sessions/my': {
+      get: {
+        tags: ['Sessions'],
+        summary: 'List my sessions in date range (calendar)',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            in: 'query',
+            name: 'from',
+            required: true,
+            schema: { type: 'string', format: 'date-time' },
+            description: 'ISO date range start',
+          },
+          {
+            in: 'query',
+            name: 'to',
+            required: true,
+            schema: { type: 'string', format: 'date-time' },
+            description: 'ISO date range end',
+          },
+        ],
+        responses: {
+          200: {
+            description: 'Sessions list',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    sessions: {
+                      type: 'array',
+                      items: { $ref: '#/components/schemas/CalendarSession' },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          400: {
+            description: 'Validation error',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          401: {
+            description: 'Unauthorized',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+        },
+      },
+    },
     '/api/sessions/class/{classId}': {
       get: {
         tags: ['Sessions'],
@@ -984,6 +1163,109 @@ const openapiSpec = {
           },
           401: {
             description: 'Unauthorized',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          404: {
+            description: 'Session not found',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+        },
+      },
+      patch: {
+        tags: ['Sessions'],
+        summary: 'Update session schedule/title (teacher owner only)',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            in: 'path',
+            name: 'sessionId',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/UpdateSessionBody' },
+            },
+          },
+        },
+        responses: {
+          200: {
+            description: 'Session updated',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    session: { $ref: '#/components/schemas/Session' },
+                  },
+                },
+              },
+            },
+          },
+          400: {
+            description: 'Validation error',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          401: {
+            description: 'Unauthorized',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          403: {
+            description: 'Forbidden',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          404: {
+            description: 'Session not found',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+        },
+      },
+      delete: {
+        tags: ['Sessions'],
+        summary: 'Delete session (scheduled only, teacher owner only)',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            in: 'path',
+            name: 'sessionId',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          200: {
+            description: 'Session deleted',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    message: { type: 'string' },
+                    session: {
+                      type: 'object',
+                      properties: {
+                        id: { type: 'string', format: 'uuid' },
+                        title: { type: 'string' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          400: {
+            description: 'Only scheduled sessions can be deleted',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          401: {
+            description: 'Unauthorized',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          403: {
+            description: 'Forbidden',
             content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
           },
           404: {

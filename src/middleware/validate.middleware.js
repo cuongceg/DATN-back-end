@@ -5,7 +5,7 @@ function isUuid(value) {
 }
 
 function validateCreateSession(req, res, next) {
-  const { classId, title, scheduledAt } = req.body;
+  const { classId, title, scheduledAt, scheduledEndAt } = req.body;
 
   if (!classId || !isUuid(classId)) {
     return res.status(400).json({ message: 'classId must be a valid UUID.' });
@@ -19,6 +19,22 @@ function validateCreateSession(req, res, next) {
     const parsed = Date.parse(scheduledAt);
     if (Number.isNaN(parsed)) {
       return res.status(400).json({ message: 'scheduledAt must be a valid ISO date.' });
+    }
+  }
+
+  if (scheduledEndAt !== undefined && scheduledEndAt !== null) {
+    const parsed = Date.parse(scheduledEndAt);
+    if (Number.isNaN(parsed)) {
+      return res.status(400).json({ message: 'scheduledEndAt must be a valid ISO date.' });
+    }
+  }
+
+  if (scheduledAt !== undefined && scheduledAt !== null
+      && scheduledEndAt !== undefined && scheduledEndAt !== null) {
+    const startMs = Date.parse(scheduledAt);
+    const endMs = Date.parse(scheduledEndAt);
+    if (!Number.isNaN(startMs) && !Number.isNaN(endMs) && endMs <= startMs) {
+      return res.status(400).json({ message: 'scheduledEndAt must be after scheduledAt.' });
     }
   }
 

@@ -5,6 +5,8 @@ const {
   fetchClassDetails,
   updateClass,
   deleteClass,
+  archiveClass,
+  activeClass,
   joinClass,
   addStudentToClass,
   addStudentsToClassBulk,
@@ -19,6 +21,8 @@ router.post('/', authenticateToken, authorizeRoles('teacher'), createClass);
 router.get('/', authenticateToken, listTeacherClasses);
 router.get('/:id', authenticateToken, fetchClassDetails);
 router.put('/:id', authenticateToken, authorizeRoles('teacher'), updateClass);
+router.patch('/:id/archive', authenticateToken, authorizeRoles('teacher'), archiveClass);
+router.patch('/:id/activate', authenticateToken, authorizeRoles('teacher'), activeClass);
 router.delete('/:id', authenticateToken, authorizeRoles('teacher'), deleteClass);
 
 router.post('/join', authenticateToken, authorizeRoles('student'), joinClass);

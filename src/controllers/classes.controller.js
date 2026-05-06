@@ -1,6 +1,11 @@
 const pool = require('../config/db');
 
 const ALLOWED_CLASS_MEMBER_PERMISSIONS = ['Member', 'Owner'];
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function isUuid(value) {
+  return typeof value === 'string' && UUID_REGEX.test(value);
+}
 
 function generateClassCode(length = 6) {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -209,6 +214,92 @@ async function deleteClass(req, res, next) {
     return res.status(200).json({
       message: 'Class deleted successfully.',
       class: rows[0],
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+async function archiveClass(req, res, next) {
+  const { id: classId } = req.params;
+
+  if (!isUuid(classId)) {
+    return res.status(400).json({ message: 'id must be a valid UUID.' });
+  }
+
+  try {
+    const classResult = await pool.query(
+      'SELECT id, teacher_id, class_code, name, description, status, created_at FROM classes WHERE id = $1 AND teacher_id = $2',
+      [classId, req.user.id]
+    );
+
+    if (classResult.rows.length === 0) {
+      return res.status(404).json({ message: 'Class not found or you do not own this class.' });
+    }
+
+    const classData = classResult.rows[0];
+    if (classData.status !== 'active') {
+      return res.status(409).json({ message: 'Only active classes can be archived.' });
+    }
+
+    const updateResult = await pool.query(
+      `UPDATE classes
+       SET status = 'archived'
+       WHERE id = $1 AND teacher_id = $2 AND status = 'active'
+       RETURNING id, teacher_id, class_code, name, description, status, created_at`,
+      [classId, req.user.id]
+    );
+
+    if (updateResult.rows.length === 0) {
+      return res.status(409).json({ message: 'Only active classes can be archived.' });
+    }
+
+    return res.status(200).json({
+      message: 'Class archived successfully.',
+      class: updateResult.rows[0],
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+async function activeClass(req, res, next) {
+  const { id: classId } = req.params;
+
+  if (!isUuid(classId)) {
+    return res.status(400).json({ message: 'id must be a valid UUID.' });
+  }
+
+  try {
+    const classResult = await pool.query(
+      'SELECT id, teacher_id, class_code, name, description, status, created_at FROM classes WHERE id = $1 AND teacher_id = $2',
+      [classId, req.user.id]
+    );
+
+    if (classResult.rows.length === 0) {
+      return res.status(404).json({ message: 'Class not found or you do not own this class.' });
+    }
+
+    const classData = classResult.rows[0];
+    if (classData.status !== 'archived') {
+      return res.status(409).json({ message: 'Only archived classes can be activated.' });
+    }
+
+    const updateResult = await pool.query(
+      `UPDATE classes
+       SET status = 'active'
+       WHERE id = $1 AND teacher_id = $2 AND status = 'archived'
+       RETURNING id, teacher_id, class_code, name, description, status, created_at`,
+      [classId, req.user.id]
+    );
+
+    if (updateResult.rows.length === 0) {
+      return res.status(409).json({ message: 'Only archived classes can be activated.' });
+    }
+
+    return res.status(200).json({
+      message: 'Class activated successfully.',
+      class: updateResult.rows[0],
     });
   } catch (error) {
     return next(error);
@@ -495,6 +586,8 @@ module.exports = {
   fetchClassDetails,
   updateClass,
   deleteClass,
+  archiveClass,
+  activeClass,
   joinClass,
   addStudentToClass,
   addStudentsToClassBulk,
