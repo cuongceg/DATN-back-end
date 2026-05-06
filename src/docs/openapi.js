@@ -15,6 +15,7 @@ const openapiSpec = {
     { name: 'Auth' },
     { name: 'Users' },
     { name: 'Classes' },
+    { name: 'Sessions' },
   ],
   components: {
     securitySchemes: {
@@ -150,6 +151,52 @@ const openapiSpec = {
         required: ['class_code'],
         properties: {
           class_code: { type: 'string', example: 'A1B2C3' },
+        },
+      },
+      Session: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', format: 'uuid' },
+          class_id: { type: 'string', format: 'uuid' },
+          livekit_room_id: { type: 'string', nullable: true },
+          title: { type: 'string' },
+          start_time: { type: 'string', format: 'date-time', nullable: true },
+          end_time: { type: 'string', format: 'date-time', nullable: true },
+          status: { type: 'string', enum: ['scheduled', 'ongoing', 'completed'] },
+        },
+      },
+      CreateSessionBody: {
+        type: 'object',
+        required: ['classId', 'title'],
+        properties: {
+          classId: { type: 'string', format: 'uuid' },
+          title: { type: 'string' },
+          scheduledAt: { type: 'string', format: 'date-time', nullable: true },
+        },
+      },
+      JoinSessionResponse: {
+        type: 'object',
+        properties: {
+          token: { type: 'string' },
+          livekit_url: { type: 'string', example: 'wss://dev-monitor.id.vn' },
+          room_name: { type: 'string' },
+        },
+      },
+      Message: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', format: 'uuid' },
+          session_id: { type: 'string', format: 'uuid' },
+          sender_id: { type: 'string', format: 'uuid' },
+          content: { type: 'string' },
+          timestamp: { type: 'string', format: 'date-time' },
+        },
+      },
+      SendMessageBody: {
+        type: 'object',
+        required: ['content'],
+        properties: {
+          content: { type: 'string' },
         },
       },
     },
@@ -819,6 +866,369 @@ const openapiSpec = {
           },
           404: {
             description: 'Class or member not found',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+        },
+      },
+    },
+    '/api/sessions': {
+      post: {
+        tags: ['Sessions'],
+        summary: 'Create session (teacher only)',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/CreateSessionBody' },
+            },
+          },
+        },
+        responses: {
+          201: {
+            description: 'Session created',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    message: { type: 'string' },
+                    session: { $ref: '#/components/schemas/Session' },
+                  },
+                },
+              },
+            },
+          },
+          400: {
+            description: 'Validation error',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          401: {
+            description: 'Unauthorized',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          403: {
+            description: 'Forbidden',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+        },
+      },
+    },
+    '/api/sessions/class/{classId}': {
+      get: {
+        tags: ['Sessions'],
+        summary: 'List sessions by class',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            in: 'path',
+            name: 'classId',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          200: {
+            description: 'Sessions list',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    sessions: {
+                      type: 'array',
+                      items: { $ref: '#/components/schemas/Session' },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          401: {
+            description: 'Unauthorized',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+        },
+      },
+    },
+    '/api/sessions/{sessionId}': {
+      get: {
+        tags: ['Sessions'],
+        summary: 'Get session details',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            in: 'path',
+            name: 'sessionId',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          200: {
+            description: 'Session details',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    session: { $ref: '#/components/schemas/Session' },
+                  },
+                },
+              },
+            },
+          },
+          400: {
+            description: 'Validation error',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          401: {
+            description: 'Unauthorized',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          404: {
+            description: 'Session not found',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+        },
+      },
+    },
+    '/api/sessions/{sessionId}/start': {
+      patch: {
+        tags: ['Sessions'],
+        summary: 'Start session (teacher only)',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            in: 'path',
+            name: 'sessionId',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          200: {
+            description: 'Session started',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    message: { type: 'string' },
+                    session: { $ref: '#/components/schemas/Session' },
+                  },
+                },
+              },
+            },
+          },
+          400: {
+            description: 'Unable to start session',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          401: {
+            description: 'Unauthorized',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          403: {
+            description: 'Forbidden',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+        },
+      },
+    },
+    '/api/sessions/{sessionId}/end': {
+      patch: {
+        tags: ['Sessions'],
+        summary: 'End session (teacher only)',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            in: 'path',
+            name: 'sessionId',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          200: {
+            description: 'Session ended',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    message: { type: 'string' },
+                    session: { $ref: '#/components/schemas/Session' },
+                  },
+                },
+              },
+            },
+          },
+          400: {
+            description: 'Unable to end session',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          401: {
+            description: 'Unauthorized',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          403: {
+            description: 'Forbidden',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+        },
+      },
+    },
+    '/api/sessions/{sessionId}/token': {
+      post: {
+        tags: ['Sessions'],
+        summary: 'Join session and get LiveKit token',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            in: 'path',
+            name: 'sessionId',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          200: {
+            description: 'Join session success',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/JoinSessionResponse' },
+              },
+            },
+          },
+          400: {
+            description: 'Session not started or already ended',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          401: {
+            description: 'Unauthorized',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          403: {
+            description: 'Forbidden',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          404: {
+            description: 'Session or user not found',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+        },
+      },
+    },
+    '/api/sessions/{sessionId}/messages': {
+      get: {
+        tags: ['Sessions'],
+        summary: 'List messages in session',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            in: 'path',
+            name: 'sessionId',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            in: 'query',
+            name: 'limit',
+            required: false,
+            schema: { type: 'integer', default: 20 },
+          },
+          {
+            in: 'query',
+            name: 'offset',
+            required: false,
+            schema: { type: 'integer', default: 0 },
+          },
+        ],
+        responses: {
+          200: {
+            description: 'Message list',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    messages: {
+                      type: 'array',
+                      items: { $ref: '#/components/schemas/Message' },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          400: {
+            description: 'Validation error',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          401: {
+            description: 'Unauthorized',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          403: {
+            description: 'Forbidden',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          404: {
+            description: 'Session not found',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+        },
+      },
+      post: {
+        tags: ['Sessions'],
+        summary: 'Send message to session',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            in: 'path',
+            name: 'sessionId',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/SendMessageBody' },
+            },
+          },
+        },
+        responses: {
+          201: {
+            description: 'Message sent',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    message: { type: 'string' },
+                    message_data: { $ref: '#/components/schemas/Message' },
+                  },
+                },
+              },
+            },
+          },
+          400: {
+            description: 'Validation error',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          401: {
+            description: 'Unauthorized',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          403: {
+            description: 'Forbidden',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          404: {
+            description: 'Session not found',
             content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
           },
         },

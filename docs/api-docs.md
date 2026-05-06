@@ -199,6 +199,7 @@ Tạo lớp học.
 		"class_code": "AB12CD",
 		"name": "Lop Toan 10A",
 		"description": "On tap hoc ky 1",
+		"status": "active",
 		"created_at": "2026-04-25T10:00:00.000Z"
 	}
 }
@@ -231,13 +232,15 @@ Danh sách lớp theo role:
 			"class_code": "AB12CD",
 			"name": "Lop Toan 10A",
 			"description": "On tap",
+			"status": "active",
+			"student_count": "2",
 			"created_at": "2026-04-25T10:00:00.000Z"
 		}
 	]
 }
 ```
 
-Ghi chú: với role `student`, mỗi phần tử có thêm `permission`, `joined_at`.
+Ghi chú: với role `student`, mỗi phần tử có thêm `permission`, `joined_at`, `student_count`.
 
 #### GET `/api/classes/:id`
 
@@ -261,6 +264,7 @@ Chi tiết lớp và danh sách thành viên.
 		"class_code": "AB12CD",
 		"name": "Lop Toan 10A",
 		"description": "On tap",
+		"status": "active",
 		"created_at": "2026-04-25T10:00:00.000Z"
 	},
 	"members": [
@@ -309,6 +313,7 @@ Cập nhật thông tin lớp.
 		"class_code": "AB12CD",
 		"name": "Lop Toan 10A - cap nhat",
 		"description": "Noi dung moi",
+		"status": "active",
 		"created_at": "2026-04-25T10:00:00.000Z"
 	}
 }
@@ -372,6 +377,7 @@ Sinh viên tham gia lớp bằng mã lớp.
 		"class_code": "AB12CD",
 		"name": "Lop Toan 10A",
 		"description": "On tap",
+		"status": "active",
 		"created_at": "2026-04-25T10:00:00.000Z"
 	},
 	"membership": {
@@ -544,6 +550,261 @@ Xóa thành viên khỏi lớp.
 - Error:
 	- `404 { "message": "Class not found or you do not own this class." }`
 	- `404 { "message": "Member not found in this class." }`
+
+---
+
+### 4.4 Sessions (Meetings)
+
+#### POST `/api/sessions`
+
+Tạo session mới.
+
+- Auth: Bắt buộc token
+- Roles: `teacher`
+- Body:
+
+```json
+{
+	"classId": "uuid",
+	"title": "Buoi hoc 1",
+	"scheduledAt": "2026-05-05T08:00:00.000Z"
+}
+```
+
+- Validation:
+	- `classId`: UUID hợp lệ
+	- `title`: required
+	- `scheduledAt`: ISO date (optional)
+
+- Success:
+	- `201`
+
+```json
+{
+	"message": "Session created successfully.",
+	"session": {
+		"id": "uuid",
+		"class_id": "uuid",
+		"livekit_room_id": null,
+		"title": "Buoi hoc 1",
+		"start_time": null,
+		"end_time": null,
+		"status": "scheduled"
+	}
+}
+```
+
+- Error:
+	- `400 { "message": "classId must be a valid UUID." }`
+	- `400 { "message": "title is required." }`
+	- `403 { "message": "Only teachers can create sessions." }`
+	- `403 { "message": "You do not have permission to create a session for this class." }`
+
+#### GET `/api/sessions/class/:classId`
+
+Lấy danh sách session của 1 lớp.
+
+- Auth: Bắt buộc token
+- Roles: tất cả role đã đăng nhập
+
+- Success:
+	- `200`
+
+```json
+{
+	"sessions": [
+		{
+			"id": "uuid",
+			"class_id": "uuid",
+			"livekit_room_id": null,
+			"title": "Buoi hoc 1",
+			"start_time": null,
+			"end_time": null,
+			"status": "scheduled"
+		}
+	]
+}
+```
+
+#### GET `/api/sessions/:sessionId`
+
+Lấy chi tiết 1 session.
+
+- Auth: Bắt buộc token
+- Roles: tất cả role đã đăng nhập
+
+- Success:
+	- `200`
+
+```json
+{
+	"session": {
+		"id": "uuid",
+		"class_id": "uuid",
+		"livekit_room_id": "uuid",
+		"title": "Buoi hoc 1",
+		"start_time": "2026-05-05T08:00:00.000Z",
+		"end_time": null,
+		"status": "ongoing"
+	}
+}
+```
+
+- Error:
+	- `404 { "message": "Session not found." }`
+
+#### PATCH `/api/sessions/:sessionId/start`
+
+Start session (scheduled → ongoing). Teacher của lớp mới được start.
+
+- Auth: Bắt buộc token
+- Roles: `teacher`
+
+- Success:
+	- `200`
+
+```json
+{
+	"message": "Session started successfully.",
+	"session": {
+		"id": "uuid",
+		"class_id": "uuid",
+		"livekit_room_id": "uuid",
+		"title": "Buoi hoc 1",
+		"start_time": "2026-05-05T08:00:00.000Z",
+		"end_time": null,
+		"status": "ongoing"
+	}
+}
+```
+
+- Error:
+	- `400 { "message": "Unable to start session." }`
+	- `403 { "message": "Only teachers can start sessions." }`
+
+#### PATCH `/api/sessions/:sessionId/end`
+
+End session (ongoing → completed). Teacher của lớp mới được end.
+
+- Auth: Bắt buộc token
+- Roles: `teacher`
+
+- Success:
+	- `200`
+
+```json
+{
+	"message": "Session ended successfully.",
+	"session": {
+		"id": "uuid",
+		"class_id": "uuid",
+		"livekit_room_id": "uuid",
+		"title": "Buoi hoc 1",
+		"start_time": "2026-05-05T08:00:00.000Z",
+		"end_time": "2026-05-05T09:30:00.000Z",
+		"status": "completed"
+	}
+}
+```
+
+- Error:
+	- `400 { "message": "Unable to end session." }`
+	- `403 { "message": "Only teachers can end sessions." }`
+
+#### POST `/api/sessions/:sessionId/token`
+
+Join session và lấy LiveKit token.
+
+- Auth: Bắt buộc token
+- Roles: teacher + student thuộc lớp
+
+- Success:
+	- `200`
+
+```json
+{
+	"token": "<livekit_jwt>",
+	"livekit_url": "wss://dev-monitor.id.vn",
+	"room_name": "uuid"
+}
+```
+
+- Error:
+	- `400 { "message": "Session has not started yet." }`
+	- `400 { "message": "Session has already ended." }`
+	- `403 { "message": "You are not a member of this class." }`
+	- `404 { "message": "Session not found." }`
+	- `404 { "message": "User not found." }`
+
+#### GET `/api/sessions/:sessionId/messages`
+
+Lấy tin nhắn của session (pagination).
+
+- Auth: Bắt buộc token
+- Roles: teacher + student thuộc lớp
+- Query params:
+	- `limit` (default: 20)
+	- `offset` (default: 0)
+
+- Success:
+	- `200`
+
+```json
+{
+	"messages": [
+		{
+			"id": "uuid",
+			"session_id": "uuid",
+			"sender_id": "uuid",
+			"content": "Xin chao",
+			"timestamp": "2026-05-05T08:05:00.000Z"
+		}
+	]
+}
+```
+
+- Error:
+	- `403 { "message": "You are not a member of this class." }`
+	- `404 { "message": "Session not found." }`
+
+#### POST `/api/sessions/:sessionId/messages`
+
+Gửi tin nhắn trong session (session phải `ongoing`).
+
+- Auth: Bắt buộc token
+- Roles: teacher + student thuộc lớp
+- Body:
+
+```json
+{
+	"content": "Xin chao"
+}
+```
+
+- Validation:
+	- `content`: required, non-empty
+
+- Success:
+	- `201`
+
+```json
+{
+	"message": "Message sent successfully.",
+	"message_data": {
+		"id": "uuid",
+		"session_id": "uuid",
+		"sender_id": "uuid",
+		"content": "Xin chao",
+		"timestamp": "2026-05-05T08:05:00.000Z"
+	}
+}
+```
+
+- Error:
+	- `400 { "message": "content is required." }`
+	- `400 { "message": "Session is not ongoing." }`
+	- `403 { "message": "You are not a member of this class." }`
+	- `404 { "message": "Session not found." }`
 
 ## 5) Error chung
 
