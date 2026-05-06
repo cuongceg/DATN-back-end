@@ -4,6 +4,7 @@ const openapiSpec = require('./docs/openapi');
 const authRoutes = require('./routes/auth.routes');
 const usersRoutes = require('./routes/users.routes');
 const classesRoutes = require('./routes/classes.routes');
+const sessionRoutes = require('./routes/session.routes');
 
 const app = express();
 
@@ -17,6 +18,7 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(openapiSpec));
 app.use('/api/auth', authRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/classes', classesRoutes);
+app.use('/api/sessions', sessionRoutes);
 
 app.use((req, res) => {
   return res.status(404).json({ message: 'Route not found.' });

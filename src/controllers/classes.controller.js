@@ -24,7 +24,7 @@ async function createClass(req, res, next) {
     const query = `
       INSERT INTO classes (teacher_id, class_code, name, description)
       VALUES ($1, $2, $3, $4)
-      RETURNING id, teacher_id, class_code, name, description, created_at
+      RETURNING id, teacher_id, class_code, name, description, status, created_at
     `;
 
     let createdClass = null;
@@ -61,18 +61,28 @@ async function listTeacherClasses(req, res, next) {
 
     if (req.user.role === 'teacher') {
       const result = await pool.query(
-        `SELECT id, teacher_id, class_code, name, description, created_at
-         FROM classes
-         WHERE teacher_id = $1
-         ORDER BY created_at DESC`,
+        `SELECT c.id, c.teacher_id, c.class_code, c.name, c.description, c.status, c.created_at,
+                COUNT(cm.student_id) AS student_count
+         FROM classes c
+         LEFT JOIN class_members cm ON cm.class_id = c.id
+         WHERE c.teacher_id = $1
+         GROUP BY c.id, c.teacher_id, c.class_code, c.name, c.description, c.status, c.created_at
+         ORDER BY c.created_at DESC`,
         [req.user.id]
       );
       rows = result.rows;
     } else if (req.user.role === 'student') {
       const result = await pool.query(
-        `SELECT c.id, c.teacher_id, c.class_code, c.name, c.description, c.created_at, cm.permission, cm.joined_at
+        `SELECT c.id, c.teacher_id, c.class_code, c.name, c.description, c.status, c.created_at,
+                cm.permission, cm.joined_at,
+                COALESCE(member_counts.student_count, 0) AS student_count
          FROM class_members cm
          INNER JOIN classes c ON c.id = cm.class_id
+         LEFT JOIN (
+           SELECT class_id, COUNT(*) AS student_count
+           FROM class_members
+           GROUP BY class_id
+         ) AS member_counts ON member_counts.class_id = c.id
          WHERE cm.student_id = $1
          ORDER BY c.created_at DESC`,
         [req.user.id]
@@ -80,9 +90,12 @@ async function listTeacherClasses(req, res, next) {
       rows = result.rows;
     } else {
       const result = await pool.query(
-        `SELECT id, teacher_id, class_code, name, description, created_at
-         FROM classes
-         ORDER BY created_at DESC`
+        `SELECT c.id, c.teacher_id, c.class_code, c.name, c.description, c.status, c.created_at,
+                COUNT(cm.student_id) AS student_count
+         FROM classes c
+         LEFT JOIN class_members cm ON cm.class_id = c.id
+         GROUP BY c.id, c.teacher_id, c.class_code, c.name, c.description, c.status, c.created_at
+         ORDER BY c.created_at DESC`
       );
       rows = result.rows;
     }
@@ -98,7 +111,7 @@ async function fetchClassDetails(req, res, next) {
 
   try {
     const classResult = await pool.query(
-      `SELECT id, teacher_id, class_code, name, description, created_at
+      `SELECT id, teacher_id, class_code, name, description, status, created_at
        FROM classes
        WHERE id = $1`,
       [classId]
@@ -159,7 +172,7 @@ async function updateClass(req, res, next) {
         name = COALESCE($1, name),
         description = COALESCE($2, description)
       WHERE id = $3 AND teacher_id = $4
-      RETURNING id, teacher_id, class_code, name, description, created_at
+      RETURNING id, teacher_id, class_code, name, description, status, created_at
     `;
 
     const values = [name ?? null, description ?? null, id, req.user.id];
