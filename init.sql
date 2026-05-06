@@ -14,6 +14,10 @@ BEGIN
         CREATE TYPE artifact_status AS ENUM ('processing', 'failed', 'completed');
     END IF;
 
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'class_status') THEN
+        CREATE TYPE class_status AS ENUM ('active', 'archived');
+    END IF;
+
     IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'class_member_permission') THEN
         CREATE TYPE class_member_permission AS ENUM ('Member', 'Owner');
     END IF;
@@ -32,6 +36,7 @@ CREATE TABLE IF NOT EXISTS classes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     teacher_id UUID NOT NULL,
     class_code VARCHAR(6) NOT NULL UNIQUE,
+    status class_status NOT NULL DEFAULT 'active',
     name VARCHAR(255) NOT NULL,
     description TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -64,6 +69,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     class_id UUID NOT NULL,
     livekit_room_id VARCHAR(255),
     title VARCHAR(255) NOT NULL,
+    scheduled_at TIMESTAMPTZ,
     start_time TIMESTAMPTZ,
     end_time TIMESTAMPTZ,
     status session_status NOT NULL DEFAULT 'scheduled',
