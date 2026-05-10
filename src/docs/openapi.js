@@ -212,10 +212,46 @@ const openapiSpec = {
         type: 'object',
         properties: {
           id: { type: 'string', format: 'uuid' },
-          session_id: { type: 'string', format: 'uuid' },
-          sender_id: { type: 'string', format: 'uuid' },
+          sender_name: { type: 'string' },
           content: { type: 'string' },
           timestamp: { type: 'string', format: 'date-time' },
+        },
+      },
+      SessionParticipant: {
+        type: 'object',
+        properties: {
+          user_id: { type: 'string', format: 'uuid' },
+          full_name: { type: 'string' },
+          role: { type: 'string', enum: ['admin', 'teacher', 'student'] },
+          joined_at: { type: 'string', format: 'date-time' },
+          left_at: { type: 'string', format: 'date-time', nullable: true },
+          is_online: { type: 'boolean' },
+        },
+      },
+      SessionParticipantsResponse: {
+        type: 'object',
+        properties: {
+          session_id: { type: 'string', format: 'uuid' },
+          total_count: { type: 'integer' },
+          participants: {
+            type: 'array',
+            items: { $ref: '#/components/schemas/SessionParticipant' },
+          },
+        },
+      },
+      LeaveSessionResponse: {
+        type: 'object',
+        properties: {
+          message: { type: 'string', example: 'Left session successfully.' },
+          participant: {
+            type: 'object',
+            properties: {
+              session_id: { type: 'string', format: 'uuid' },
+              user_id: { type: 'string', format: 'uuid' },
+              joined_at: { type: 'string', format: 'date-time' },
+              left_at: { type: 'string', format: 'date-time' },
+            },
+          },
         },
       },
       SendMessageBody: {
@@ -1397,6 +1433,84 @@ const openapiSpec = {
           },
           404: {
             description: 'Session or user not found',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+        },
+      },
+    },
+    '/api/sessions/{sessionId}/participants': {
+      get: {
+        tags: ['Sessions'],
+        summary: 'List participants in session',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            in: 'path',
+            name: 'sessionId',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          200: {
+            description: 'Participants list',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/SessionParticipantsResponse' },
+              },
+            },
+          },
+          401: {
+            description: 'Unauthorized',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          403: {
+            description: 'Forbidden',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          404: {
+            description: 'Session not found',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+        },
+      },
+    },
+    '/api/sessions/{sessionId}/leave': {
+      patch: {
+        tags: ['Sessions'],
+        summary: 'Leave session',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            in: 'path',
+            name: 'sessionId',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          200: {
+            description: 'Leave session success',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/LeaveSessionResponse' },
+              },
+            },
+          },
+          400: {
+            description: 'Not joined or already left',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          401: {
+            description: 'Unauthorized',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          403: {
+            description: 'Forbidden',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          404: {
+            description: 'Session not found',
             content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
           },
         },

@@ -147,6 +147,47 @@ async function verifyUserCanJoin(userId, sessionId) {
   };
 }
 
+async function verifyUserCanAccessSession(user, sessionId) {
+  const sessionResult = await pool.query(
+    `SELECT s.id, s.class_id, s.status, s.livekit_room_id, c.teacher_id
+     FROM sessions s
+     JOIN classes c ON c.id = s.class_id
+     WHERE s.id = $1`,
+    [sessionId]
+  );
+
+  if (sessionResult.rows.length === 0) {
+    const error = new Error('Session not found.');
+    error.status = 404;
+    throw error;
+  }
+
+  const session = sessionResult.rows[0];
+
+  if (user.role === 'admin') {
+    return { session, role: 'admin' };
+  }
+
+  if (session.teacher_id === user.id) {
+    return { session, role: 'teacher' };
+  }
+
+  const memberResult = await pool.query(
+    `SELECT 1
+     FROM class_members
+     WHERE class_id = $1 AND student_id = $2`,
+    [session.class_id, user.id]
+  );
+
+  if (memberResult.rows.length === 0) {
+    const error = new Error('You are not a member of this class.');
+    error.status = 403;
+    throw error;
+  }
+
+  return { session, role: 'student' };
+}
+
 async function updateSession(sessionId, teacherId, { title, scheduledAt, scheduledEndAt }) {
   const sessionResult = await pool.query(
     `SELECT s.id, s.status, c.teacher_id
@@ -283,6 +324,7 @@ module.exports = {
   startSession,
   endSession,
   verifyUserCanJoin,
+  verifyUserCanAccessSession,
   updateSession,
   deleteSession,
   getMySessions,

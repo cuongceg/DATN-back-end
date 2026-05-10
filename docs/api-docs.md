@@ -887,7 +887,7 @@ End session (ongoing → completed). Teacher của lớp mới được end.
 
 #### POST `/api/sessions/:sessionId/token`
 
-Join session và lấy LiveKit token.
+Join session và lấy LiveKit token (ghi nhận participant join session).
 
 - Auth: Bắt buộc token
 - Roles: teacher + student thuộc lớp
@@ -910,6 +910,73 @@ Join session và lấy LiveKit token.
 	- `404 { "message": "Session not found." }`
 	- `404 { "message": "User not found." }`
 
+#### GET `/api/sessions/:sessionId/participants`
+
+Lấy danh sách participants của session.
+
+- Auth: Bắt buộc token
+- Roles: teacher + student thuộc lớp + admin
+
+- Success:
+	- `200`
+
+```json
+{
+	"session_id": "uuid",
+	"total_count": 2,
+	"participants": [
+		{
+			"user_id": "uuid",
+			"full_name": "Nguyen Van A",
+			"role": "teacher",
+			"joined_at": "2026-05-05T08:00:10.000Z",
+			"left_at": null,
+			"is_online": true
+		},
+		{
+			"user_id": "uuid",
+			"full_name": "Tran Thi B",
+			"role": "student",
+			"joined_at": "2026-05-05T08:01:30.000Z",
+			"left_at": "2026-05-05T08:45:00.000Z",
+			"is_online": false
+		}
+	]
+}
+```
+
+- Error:
+	- `403 { "message": "You are not a member of this class." }`
+	- `404 { "message": "Session not found." }`
+
+#### PATCH `/api/sessions/:sessionId/leave`
+
+Roi session (cap nhat left_at).
+
+- Auth: Bắt buộc token
+- Roles: teacher + student thuộc lớp + admin
+
+- Success:
+	- `200`
+
+```json
+{
+	"message": "Left session successfully.",
+	"participant": {
+		"session_id": "uuid",
+		"user_id": "uuid",
+		"joined_at": "2026-05-05T08:01:30.000Z",
+		"left_at": "2026-05-05T08:45:00.000Z"
+	}
+}
+```
+
+- Error:
+	- `400 { "message": "You have not joined this session." }`
+	- `400 { "message": "You have already left this session." }`
+	- `403 { "message": "You are not a member of this class." }`
+	- `404 { "message": "Session not found." }`
+
 #### GET `/api/sessions/:sessionId/messages`
 
 Lấy tin nhắn của session (pagination).
@@ -928,8 +995,7 @@ Lấy tin nhắn của session (pagination).
 	"messages": [
 		{
 			"id": "uuid",
-			"session_id": "uuid",
-			"sender_id": "uuid",
+			"sender_name": "Nguyen Van A",
 			"content": "Xin chao",
 			"timestamp": "2026-05-05T08:05:00.000Z"
 		}

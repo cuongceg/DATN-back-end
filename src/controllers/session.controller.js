@@ -229,10 +229,89 @@ async function joinSession(req, res, next) {
 
     const token = await generateLiveKitToken(session.livekit_room_id, req.user.id, grants);
 
+    await pool.query(
+      `INSERT INTO session_participants (session_id, user_id, joined_at, left_at)
+       VALUES ($1, $2, NOW(), NULL)
+       ON CONFLICT (session_id, user_id)
+       DO UPDATE SET joined_at = NOW(), left_at = NULL`,
+      [sessionId, req.user.id]
+    );
+
     return res.status(200).json({
       token,
       livekit_url: process.env.LIVEKIT_URL,
       room_name: session.livekit_room_id,
+    });
+  } catch (error) {
+    return handleServiceError(res, error, next);
+  }
+}
+
+async function getParticipants(req, res, next) {
+  const { sessionId } = req.params;
+
+  try {
+    await sessionService.verifyUserCanAccessSession(req.user, sessionId);
+
+    const { rows } = await pool.query(
+      `SELECT
+          u.id           AS user_id,
+          u.full_name,
+          u.role,
+          sp.joined_at,
+          sp.left_at,
+          (sp.left_at IS NULL) AS is_online
+       FROM session_participants sp
+       JOIN users u ON u.id = sp.user_id
+       WHERE sp.session_id = $1
+       ORDER BY sp.joined_at ASC`,
+      [sessionId]
+    );
+
+    return res.status(200).json({
+      session_id: sessionId,
+      total_count: rows.length,
+      participants: rows,
+    });
+  } catch (error) {
+    return handleServiceError(res, error, next);
+  }
+}
+
+async function leaveSession(req, res, next) {
+  const { sessionId } = req.params;
+
+  try {
+    await sessionService.verifyUserCanAccessSession(req.user, sessionId);
+
+    const participantResult = await pool.query(
+      `SELECT session_id, user_id, joined_at, left_at
+       FROM session_participants
+       WHERE session_id = $1 AND user_id = $2`,
+      [sessionId, req.user.id]
+    );
+
+    if (participantResult.rows.length === 0) {
+      return res.status(400).json({ message: 'You have not joined this session.' });
+    }
+
+    const participant = participantResult.rows[0];
+
+    if (participant.left_at) {
+      return res.status(400).json({ message: 'You have already left this session.' });
+    }
+
+    const updateResult = await pool.query(
+      `UPDATE session_participants
+       SET left_at = NOW()
+       WHERE session_id = $1 AND user_id = $2
+       RETURNING session_id, user_id, joined_at, left_at`,
+      [sessionId, req.user.id]
+    );
+
+    return res.status(200).json({
+      message: 'Left session successfully.',
+      participant: updateResult.rows[0],
     });
   } catch (error) {
     return handleServiceError(res, error, next);
@@ -248,10 +327,11 @@ async function getMessages(req, res, next) {
     await sessionService.verifyUserCanJoin(req.user.id, sessionId);
 
     const { rows } = await pool.query(
-      `SELECT id, session_id, sender_id, content, "timestamp"
-       FROM messages
-       WHERE session_id = $1
-       ORDER BY "timestamp" ASC
+      `SELECT m.id, u.full_name AS sender_name, m.content, m."timestamp", m.sender_id
+       FROM messages m
+       JOIN users u ON u.id = m.sender_id
+       WHERE m.session_id = $1
+       ORDER BY m."timestamp" ASC
        LIMIT $2 OFFSET $3`,
       [sessionId, limit, offset]
     );
@@ -303,6 +383,8 @@ module.exports = {
   startSession,
   endSession,
   joinSession,
+  getParticipants,
+  leaveSession,
   getMessages,
   sendMessage,
 };

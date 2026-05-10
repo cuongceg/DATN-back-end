@@ -14,6 +14,8 @@ router.use(authenticateToken);
 router.post('/', validateCreateSession, sessionController.createSession);
 router.get('/my', sessionController.getMySessions);
 router.get('/class/:classId', sessionController.getSessionsByClass);
+router.get('/:sessionId/participants', validateSessionIdParam, sessionController.getParticipants);
+router.patch('/:sessionId/leave', validateSessionIdParam, sessionController.leaveSession);
 router.patch('/:sessionId', validateSessionIdParam, sessionController.updateSession);
 router.delete('/:sessionId', validateSessionIdParam, sessionController.deleteSession);
 router.get('/:sessionId', validateSessionIdParam, sessionController.getSessionById);
