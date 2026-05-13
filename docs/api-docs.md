@@ -1232,215 +1232,113 @@ Xoa post (author hoac teacher owner).
 
 ### 4.6 Files
 
-#### GET `/api/files/class/:classId/categories`
+Files feature được thiết kế theo folder tree thuần (không còn category). Tất cả thao tác dùng `path` dạng POSIX bắt đầu bằng `/`.
 
-Lấy danh sách categories.
+#### POST `/api/files/class/:classId/content`
+
+Teacher only. Tạo folder hoặc upload file tùy theo `type`.
+
+- Auth: Bắt buộc token
+- Roles: teacher owner
+- `type`:
+	- `folder`: có thể gửi JSON hoặc `multipart/form-data`
+	- `file`: bắt buộc `multipart/form-data`
+
+**Tạo folder (JSON)**
+
+```json
+{ "type": "folder", "path": "/lecture-notes/slides" }
+```
+
+**Upload file (`multipart/form-data`)**
+
+- Fields:
+	- `type`: `file`
+	- `path`: full path tới file, ví dụ `/lecture-notes/chapter1.pdf`
+	- `file`: binary
+
+- Success `201` (folder):
+
+```json
+{ "message": "Folder created successfully.", "folder": { "id": "uuid", "path": "/lecture-notes/slides", "name": "slides", "created_at": "2026-05-01T10:00:00.000Z" } }
+```
+
+- Success `201` (file):
+
+```json
+{ "message": "File uploaded successfully.", "file": { "id": "uuid", "path": "/lecture-notes/chapter1.pdf", "original_name": "chapter1.pdf", "mime_type": "application/pdf", "size_bytes": 204800, "created_at": "2026-05-01T10:00:00.000Z" } }
+```
+
+- Error:
+	- `400` thiếu field hoặc `path` không hợp lệ
+	- `403` không phải teacher owner của lớp
+	- `409` `path` đã tồn tại
+	- `413` file > 50MB
+
+#### GET `/api/files/class/:classId/content?path=/`
+
+Teacher hoặc student là thành viên lớp. Trả về list items (folders + files) tại `path` (không recursive).
 
 - Auth: Bắt buộc token
 - Roles: teacher owner hoặc student member
+- Query:
+	- `path` (optional, default `/`)
 
-- Success:
-	- `200`
+- Success `200`:
 
 ```json
 {
-	"categories": [
-		{ "id": "uuid", "name": "General", "folder_count": 2, "created_at": "2026-05-01T10:00:00.000Z" }
+	"path": "/lecture-notes/",
+	"items": [
+		{ "id": "uuid", "type": "folder", "name": "slides", "path": "/lecture-notes/slides", "created_at": "2026-05-01T10:00:00.000Z", "created_by_name": "Nguyen Van A" },
+		{ "id": "uuid", "type": "file", "name": "chapter1.pdf", "path": "/lecture-notes/chapter1.pdf", "mime_type": "application/pdf", "size_bytes": 204800, "created_at": "2026-05-01T10:00:00.000Z", "created_by_name": "Nguyen Van A" }
 	]
 }
 ```
 
-#### POST `/api/files/class/:classId/categories`
-
-Tao category.
-
-- Auth: Bắt buộc token
-- Roles: teacher owner
-- Body:
-
-```json
-{ "name": "General" }
-```
-
-- Success:
-	- `201`
-
-```json
-{
-	"message": "Category created successfully.",
-	"category": {
-		"id": "uuid",
-		"class_id": "uuid",
-		"name": "General",
-		"created_at": "2026-05-01T10:00:00.000Z"
-	}
-}
-```
-
 - Error:
-	- `409 { "message": "Category name already exists in this class." }`
+	- `403` không có quyền
+	- `404` `path` không tồn tại
 
-#### DELETE `/api/files/class/:classId/categories/:categoryId`
+#### GET `/api/files/class/:classId/download?path=/lecture-notes/chapter1.pdf`
 
-Xoa category (cascade).
-
-- Auth: Bắt buộc token
-- Roles: teacher owner
-
-- Success:
-	- `200`
-
-```json
-{ "message": "Category deleted successfully." }
-```
-
-#### GET `/api/files/class/:classId/categories/:categoryId/folders`
-
-Lấy danh sách folders.
+Teacher hoặc student là thành viên lớp. Trả về presigned URL từ MinIO (expiry 1 giờ).
 
 - Auth: Bắt buộc token
 - Roles: teacher owner hoặc student member
+- Query:
+	- `path` (required, full file path)
 
-- Success:
-	- `200`
-
-```json
-{
-	"folders": [
-		{ "id": "uuid", "name": "Tai lieu", "file_count": 3, "created_at": "2026-05-01T10:00:00.000Z" }
-	]
-}
-```
-
-#### POST `/api/files/class/:classId/categories/:categoryId/folders`
-
-Tao folder.
-
-- Auth: Bắt buộc token
-- Roles: teacher owner
-- Body:
+- Success `200`:
 
 ```json
-{ "name": "Tai lieu" }
-```
-
-- Success:
-	- `201`
-
-```json
-{
-	"message": "Folder created successfully.",
-	"folder": {
-		"id": "uuid",
-		"class_id": "uuid",
-		"category_id": "uuid",
-		"name": "Tai lieu",
-		"created_at": "2026-05-01T10:00:00.000Z"
-	}
-}
+{ "download_url": "http://localhost:9000/class-files/...?X-Amz-Signature=...", "expires_in_seconds": 3600 }
 ```
 
 - Error:
-	- `409 { "message": "Folder name already exists in this category." }`
+	- `403` không có quyền
+	- `404` file không tồn tại tại path
 
-#### DELETE `/api/files/class/:classId/categories/:categoryId/folders/:folderId`
+#### DELETE `/api/files/class/:classId/content?path=/...`
 
-Xoa folder (cascade).
-
-- Auth: Bắt buộc token
-- Roles: teacher owner
-
-- Success:
-	- `200`
-
-```json
-{ "message": "Folder deleted successfully." }
-```
-
-#### POST `/api/files/class/:classId/folders/:folderId/upload`
-
-Upload file vao folder.
+Chỉ `created_by = req.user.id` mới xóa được (áp dụng cả file lẫn folder).
 
 - Auth: Bắt buộc token
-- Roles: teacher owner
-- Content-Type: `multipart/form-data`
-- Field: `file` (single), max 50MB
+- Roles: teacher owner hoặc student member (nhưng vẫn bị chặn nếu không phải người tạo)
+- Query:
+	- `path` (required)
 
-- Success:
-	- `201`
+- Success `200`:
 
 ```json
-{
-	"message": "File uploaded successfully.",
-	"file": {
-		"id": "uuid",
-		"original_name": "Bai_tap.pdf",
-		"mime_type": "application/pdf",
-		"size_bytes": 204800,
-		"created_at": "2026-05-01T10:00:00.000Z"
-	}
-}
+{ "message": "Deleted successfully." }
 ```
 
 - Error:
-	- `400 { "message": "file is required." }`
-	- `413 { "message": "File exceeds 50MB limit." }`
-
-#### GET `/api/files/class/:classId/folders/:folderId/files`
-
-Lấy danh sách files trong folder.
-
-- Auth: Bắt buộc token
-- Roles: teacher owner hoặc student member
-
-- Success:
-	- `200`
-
-```json
-{
-	"files": [
-		{
-			"id": "uuid",
-			"original_name": "Bai_tap.pdf",
-			"mime_type": "application/pdf",
-			"size_bytes": 204800,
-			"uploaded_by_name": "Nguyen Van A",
-			"created_at": "2026-05-01T10:00:00.000Z"
-		}
-	]
-}
-```
-
-#### GET `/api/files/:fileId/download-url`
-
-Lay presigned URL download.
-
-- Auth: Bắt buộc token
-- Roles: teacher owner hoặc student member
-
-- Success:
-	- `200`
-
-```json
-{
-	"download_url": "http://localhost:9000/class-files/...?X-Amz-Signature=...",
-	"expires_in_seconds": 3600
-}
-```
-
-#### DELETE `/api/files/:fileId`
-
-Xoa file (MinIO truoc, DB sau).
-
-- Auth: Bắt buộc token
-- Roles: teacher owner
-
-- Success:
-	- `200`
-
-```json
-{ "message": "File deleted successfully." }
-```
+	- `400` folder không rỗng
+	- `403` không phải người tạo
+	- `404` path không tồn tại
+	- `500` MinIO lỗi khi xóa file
 
 ## 5) Error chung
 

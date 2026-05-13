@@ -300,46 +300,48 @@ const openapiSpec = {
           bodyPlain: { type: 'string' },
         },
       },
-      Category: {
+      FolderNode: {
         type: 'object',
         properties: {
           id: { type: 'string', format: 'uuid' },
-          class_id: { type: 'string', format: 'uuid' },
-          name: { type: 'string' },
-          created_at: { type: 'string', format: 'date-time' },
-          folder_count: { type: 'integer' },
-        },
-      },
-      Folder: {
-        type: 'object',
-        properties: {
-          id: { type: 'string', format: 'uuid' },
-          class_id: { type: 'string', format: 'uuid' },
-          category_id: { type: 'string', format: 'uuid' },
-          name: { type: 'string' },
-          created_at: { type: 'string', format: 'date-time' },
-          file_count: { type: 'integer' },
-        },
-      },
-      ClassFile: {
-        type: 'object',
-        properties: {
-          id: { type: 'string', format: 'uuid' },
-          original_name: { type: 'string' },
-          mime_type: { type: 'string', nullable: true },
-          size_bytes: { type: 'integer' },
-          uploaded_by_name: { type: 'string' },
+          path: { type: 'string', example: '/lecture-notes/slides' },
+          name: { type: 'string', example: 'slides' },
           created_at: { type: 'string', format: 'date-time' },
         },
       },
-      UploadFileResponse: {
+      FileNode: {
         type: 'object',
         properties: {
           id: { type: 'string', format: 'uuid' },
-          original_name: { type: 'string' },
+          path: { type: 'string', example: '/lecture-notes/chapter1.pdf' },
+          original_name: { type: 'string', example: 'chapter1.pdf' },
           mime_type: { type: 'string', nullable: true },
           size_bytes: { type: 'integer' },
           created_at: { type: 'string', format: 'date-time' },
+        },
+      },
+      ContentItem: {
+        type: 'object',
+        required: ['id', 'type', 'name', 'path', 'created_at', 'created_by_name'],
+        properties: {
+          id: { type: 'string', format: 'uuid' },
+          type: { type: 'string', enum: ['folder', 'file'] },
+          name: { type: 'string' },
+          path: { type: 'string' },
+          created_at: { type: 'string', format: 'date-time' },
+          created_by_name: { type: 'string' },
+          mime_type: { type: 'string', nullable: true },
+          size_bytes: { type: 'integer', nullable: true },
+        },
+      },
+      ListContentResponse: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', example: '/lecture-notes/' },
+          items: {
+            type: 'array',
+            items: { $ref: '#/components/schemas/ContentItem' },
+          },
         },
       },
       DownloadUrlResponse: {
@@ -1974,65 +1976,13 @@ const openapiSpec = {
         },
       },
     },
-    '/api/files/class/{classId}/categories': {
-      get: {
-        tags: ['Files'],
-        summary: 'List categories by class',
-        security: [{ bearerAuth: [] }],
-        parameters: [
-          {
-            in: 'path',
-            name: 'classId',
-            required: true,
-            schema: { type: 'string', format: 'uuid' },
-          },
-        ],
-        responses: {
-          200: {
-            description: 'Categories list',
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  properties: {
-                    categories: {
-                      type: 'array',
-                      items: { $ref: '#/components/schemas/Category' },
-                    },
-                  },
-                },
-              },
-            },
-          },
-          400: {
-            description: 'Validation error',
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
-          },
-          401: {
-            description: 'Unauthorized',
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
-          },
-          403: {
-            description: 'Forbidden',
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
-          },
-          404: {
-            description: 'Class not found',
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
-          },
-        },
-      },
+    '/api/files/class/{classId}/content': {
       post: {
         tags: ['Files'],
-        summary: 'Create category (teacher only)',
+        summary: 'Create folder or upload file by path (teacher only)',
         security: [{ bearerAuth: [] }],
         parameters: [
-          {
-            in: 'path',
-            name: 'classId',
-            required: true,
-            schema: { type: 'string', format: 'uuid' },
-          },
+          { in: 'path', name: 'classId', required: true, schema: { type: 'string', format: 'uuid' } },
         ],
         requestBody: {
           required: true,
@@ -2040,260 +1990,60 @@ const openapiSpec = {
             'application/json': {
               schema: {
                 type: 'object',
-                required: ['name'],
-                properties: { name: { type: 'string' } },
-              },
-            },
-          },
-        },
-        responses: {
-          201: {
-            description: 'Category created',
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  properties: {
-                    message: { type: 'string' },
-                    category: { $ref: '#/components/schemas/Category' },
-                  },
+                required: ['type', 'path'],
+                properties: {
+                  type: { type: 'string', enum: ['folder'], example: 'folder' },
+                  path: { type: 'string', example: '/lecture-notes/slides' },
                 },
               },
             },
-          },
-          400: {
-            description: 'Validation error',
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
-          },
-          401: {
-            description: 'Unauthorized',
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
-          },
-          403: {
-            description: 'Forbidden',
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
-          },
-          404: {
-            description: 'Class not found',
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
-          },
-          409: {
-            description: 'Category already exists',
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
-          },
-        },
-      },
-    },
-    '/api/files/class/{classId}/categories/{categoryId}': {
-      delete: {
-        tags: ['Files'],
-        summary: 'Delete category (teacher only)',
-        security: [{ bearerAuth: [] }],
-        parameters: [
-          { in: 'path', name: 'classId', required: true, schema: { type: 'string', format: 'uuid' } },
-          { in: 'path', name: 'categoryId', required: true, schema: { type: 'string', format: 'uuid' } },
-        ],
-        responses: {
-          200: {
-            description: 'Category deleted',
-            content: {
-              'application/json': {
-                schema: { type: 'object', properties: { message: { type: 'string' } } },
-              },
-            },
-          },
-          400: {
-            description: 'Validation error',
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
-          },
-          401: {
-            description: 'Unauthorized',
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
-          },
-          403: {
-            description: 'Forbidden',
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
-          },
-          404: {
-            description: 'Category not found',
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
-          },
-        },
-      },
-    },
-    '/api/files/class/{classId}/categories/{categoryId}/folders': {
-      get: {
-        tags: ['Files'],
-        summary: 'List folders by category',
-        security: [{ bearerAuth: [] }],
-        parameters: [
-          { in: 'path', name: 'classId', required: true, schema: { type: 'string', format: 'uuid' } },
-          { in: 'path', name: 'categoryId', required: true, schema: { type: 'string', format: 'uuid' } },
-        ],
-        responses: {
-          200: {
-            description: 'Folders list',
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  properties: {
-                    folders: {
-                      type: 'array',
-                      items: { $ref: '#/components/schemas/Folder' },
-                    },
-                  },
-                },
-              },
-            },
-          },
-          400: {
-            description: 'Validation error',
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
-          },
-          401: {
-            description: 'Unauthorized',
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
-          },
-          403: {
-            description: 'Forbidden',
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
-          },
-          404: {
-            description: 'Category not found',
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
-          },
-        },
-      },
-      post: {
-        tags: ['Files'],
-        summary: 'Create folder (teacher only)',
-        security: [{ bearerAuth: [] }],
-        parameters: [
-          { in: 'path', name: 'classId', required: true, schema: { type: 'string', format: 'uuid' } },
-          { in: 'path', name: 'categoryId', required: true, schema: { type: 'string', format: 'uuid' } },
-        ],
-        requestBody: {
-          required: true,
-          content: {
-            'application/json': {
-              schema: {
-                type: 'object',
-                required: ['name'],
-                properties: { name: { type: 'string' } },
-              },
-            },
-          },
-        },
-        responses: {
-          201: {
-            description: 'Folder created',
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  properties: {
-                    message: { type: 'string' },
-                    folder: { $ref: '#/components/schemas/Folder' },
-                  },
-                },
-              },
-            },
-          },
-          400: {
-            description: 'Validation error',
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
-          },
-          401: {
-            description: 'Unauthorized',
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
-          },
-          403: {
-            description: 'Forbidden',
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
-          },
-          404: {
-            description: 'Category not found',
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
-          },
-          409: {
-            description: 'Folder already exists',
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
-          },
-        },
-      },
-    },
-    '/api/files/class/{classId}/categories/{categoryId}/folders/{folderId}': {
-      delete: {
-        tags: ['Files'],
-        summary: 'Delete folder (teacher only)',
-        security: [{ bearerAuth: [] }],
-        parameters: [
-          { in: 'path', name: 'classId', required: true, schema: { type: 'string', format: 'uuid' } },
-          { in: 'path', name: 'categoryId', required: true, schema: { type: 'string', format: 'uuid' } },
-          { in: 'path', name: 'folderId', required: true, schema: { type: 'string', format: 'uuid' } },
-        ],
-        responses: {
-          200: {
-            description: 'Folder deleted',
-            content: {
-              'application/json': {
-                schema: { type: 'object', properties: { message: { type: 'string' } } },
-              },
-            },
-          },
-          400: {
-            description: 'Validation error',
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
-          },
-          401: {
-            description: 'Unauthorized',
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
-          },
-          403: {
-            description: 'Forbidden',
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
-          },
-          404: {
-            description: 'Folder not found',
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
-          },
-        },
-      },
-    },
-    '/api/files/class/{classId}/folders/{folderId}/upload': {
-      post: {
-        tags: ['Files'],
-        summary: 'Upload file to folder (teacher only)',
-        security: [{ bearerAuth: [] }],
-        parameters: [
-          { in: 'path', name: 'classId', required: true, schema: { type: 'string', format: 'uuid' } },
-          { in: 'path', name: 'folderId', required: true, schema: { type: 'string', format: 'uuid' } },
-        ],
-        requestBody: {
-          required: true,
-          content: {
             'multipart/form-data': {
               schema: {
-                type: 'object',
-                properties: {
-                  file: { type: 'string', format: 'binary' },
-                },
+                oneOf: [
+                  {
+                    type: 'object',
+                    required: ['type', 'path'],
+                    properties: {
+                      type: { type: 'string', enum: ['folder'], example: 'folder' },
+                      path: { type: 'string', example: '/lecture-notes/slides' },
+                    },
+                  },
+                  {
+                    type: 'object',
+                    required: ['type', 'path', 'file'],
+                    properties: {
+                      type: { type: 'string', enum: ['file'], example: 'file' },
+                      path: { type: 'string', example: '/lecture-notes/chapter1.pdf' },
+                      file: { type: 'string', format: 'binary' },
+                    },
+                  },
+                ],
               },
             },
           },
         },
         responses: {
           201: {
-            description: 'File uploaded',
+            description: 'Created',
             content: {
               'application/json': {
                 schema: {
-                  type: 'object',
-                  properties: {
-                    message: { type: 'string' },
-                    file: { $ref: '#/components/schemas/UploadFileResponse' },
-                  },
+                  oneOf: [
+                    {
+                      type: 'object',
+                      properties: {
+                        message: { type: 'string', example: 'Folder created successfully.' },
+                        folder: { $ref: '#/components/schemas/FolderNode' },
+                      },
+                    },
+                    {
+                      type: 'object',
+                      properties: {
+                        message: { type: 'string', example: 'File uploaded successfully.' },
+                        file: { $ref: '#/components/schemas/FileNode' },
+                      },
+                    },
+                  ],
                 },
               },
             },
@@ -2311,7 +2061,11 @@ const openapiSpec = {
             content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
           },
           404: {
-            description: 'Folder not found',
+            description: 'Class not found',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          409: {
+            description: 'Path already exists',
             content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
           },
           413: {
@@ -2320,30 +2074,26 @@ const openapiSpec = {
           },
         },
       },
-    },
-    '/api/files/class/{classId}/folders/{folderId}/files': {
       get: {
         tags: ['Files'],
-        summary: 'List files in folder',
+        summary: 'List folders and files under a path (non-recursive)',
         security: [{ bearerAuth: [] }],
         parameters: [
           { in: 'path', name: 'classId', required: true, schema: { type: 'string', format: 'uuid' } },
-          { in: 'path', name: 'folderId', required: true, schema: { type: 'string', format: 'uuid' } },
+          {
+            in: 'query',
+            name: 'path',
+            required: false,
+            schema: { type: 'string', example: '/' },
+            description: 'Folder path to list. Defaults to /',
+          },
         ],
         responses: {
           200: {
-            description: 'Files list',
+            description: 'Content list',
             content: {
               'application/json': {
-                schema: {
-                  type: 'object',
-                  properties: {
-                    files: {
-                      type: 'array',
-                      items: { $ref: '#/components/schemas/ClassFile' },
-                    },
-                  },
-                },
+                schema: { $ref: '#/components/schemas/ListContentResponse' },
               },
             },
           },
@@ -2360,19 +2110,69 @@ const openapiSpec = {
             content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
           },
           404: {
-            description: 'Folder not found',
+            description: 'Path not found',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+        },
+      },
+      delete: {
+        tags: ['Files'],
+        summary: 'Delete file or folder by path (creator only)',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { in: 'path', name: 'classId', required: true, schema: { type: 'string', format: 'uuid' } },
+          {
+            in: 'query',
+            name: 'path',
+            required: true,
+            schema: { type: 'string', example: '/lecture-notes/chapter1.pdf' },
+          },
+        ],
+        responses: {
+          200: {
+            description: 'Deleted',
+            content: {
+              'application/json': {
+                schema: { type: 'object', properties: { message: { type: 'string' } } },
+              },
+            },
+          },
+          400: {
+            description: 'Validation error or folder not empty',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          401: {
+            description: 'Unauthorized',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          403: {
+            description: 'Forbidden',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          404: {
+            description: 'Path not found',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          500: {
+            description: 'MinIO error',
             content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
           },
         },
       },
     },
-    '/api/files/{fileId}/download-url': {
+    '/api/files/class/{classId}/download': {
       get: {
         tags: ['Files'],
-        summary: 'Get file download URL',
+        summary: 'Get presigned download URL by file path',
         security: [{ bearerAuth: [] }],
         parameters: [
-          { in: 'path', name: 'fileId', required: true, schema: { type: 'string', format: 'uuid' } },
+          { in: 'path', name: 'classId', required: true, schema: { type: 'string', format: 'uuid' } },
+          {
+            in: 'query',
+            name: 'path',
+            required: true,
+            schema: { type: 'string', example: '/lecture-notes/chapter1.pdf' },
+          },
         ],
         responses: {
           200: {
@@ -2401,46 +2201,6 @@ const openapiSpec = {
           },
           500: {
             description: 'Failed to generate URL',
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
-          },
-        },
-      },
-    },
-    '/api/files/{fileId}': {
-      delete: {
-        tags: ['Files'],
-        summary: 'Delete file (teacher only)',
-        security: [{ bearerAuth: [] }],
-        parameters: [
-          { in: 'path', name: 'fileId', required: true, schema: { type: 'string', format: 'uuid' } },
-        ],
-        responses: {
-          200: {
-            description: 'File deleted',
-            content: {
-              'application/json': {
-                schema: { type: 'object', properties: { message: { type: 'string' } } },
-              },
-            },
-          },
-          400: {
-            description: 'Validation error',
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
-          },
-          401: {
-            description: 'Unauthorized',
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
-          },
-          403: {
-            description: 'Forbidden',
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
-          },
-          404: {
-            description: 'File not found',
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
-          },
-          500: {
-            description: 'Unable to delete file from storage',
             content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
           },
         },
