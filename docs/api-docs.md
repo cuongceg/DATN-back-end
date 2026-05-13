@@ -1046,6 +1046,402 @@ Gửi tin nhắn trong session (session phải `ongoing`).
 	- `403 { "message": "You are not a member of this class." }`
 	- `404 { "message": "Session not found." }`
 
+---
+
+### 4.5 Posts
+
+#### GET `/api/posts/class/:classId`
+
+Lấy danh sách posts theo lớp (pagination).
+
+- Auth: Bắt buộc token
+- Roles: `teacher` (owner) hoặc `student` là thành viên
+- Query params:
+	- `limit` (default: 20, max: 100)
+	- `offset` (default: 0)
+
+- Success:
+	- `200`
+
+```json
+{
+	"posts": [
+		{
+			"id": "uuid",
+			"type": "normal",
+			"title": "Thong bao",
+			"body_delta": { "ops": [] },
+			"body_plain": "Noi dung",
+			"author_id": "uuid",
+			"author_name": "Nguyen Van A",
+			"session_id": null,
+			"session_title": null,
+			"session_status": null,
+			"session_scheduled_at": null,
+			"created_at": "2026-05-01T10:00:00.000Z",
+			"updated_at": "2026-05-01T10:00:00.000Z"
+		}
+	],
+	"total_count": 15,
+	"limit": 20,
+	"offset": 0
+}
+```
+
+- Error:
+	- `403 { "message": "You do not have permission to access this class." }`
+	- `404 { "message": "Class not found." }`
+
+#### GET `/api/posts/:postId`
+
+Lấy chi tiết 1 post.
+
+- Auth: Bắt buộc token
+- Roles: teacher owner hoặc student member
+
+- Success:
+	- `200`
+
+```json
+{
+	"post": {
+		"id": "uuid",
+		"type": "normal",
+		"title": "Thong bao",
+		"body_delta": { "ops": [] },
+		"body_plain": "Noi dung",
+		"author_id": "uuid",
+		"author_name": "Nguyen Van A",
+		"session_id": null,
+		"session_title": null,
+		"session_status": null,
+		"session_scheduled_at": null,
+		"created_at": "2026-05-01T10:00:00.000Z",
+		"updated_at": "2026-05-01T10:00:00.000Z"
+	}
+}
+```
+
+- Error:
+	- `403 { "message": "You do not have permission to access this class." }`
+	- `404 { "message": "Post not found." }`
+
+#### POST `/api/posts`
+
+Tao post normal.
+
+- Auth: Bắt buộc token
+- Roles: teacher owner hoặc student member
+- Body:
+
+```json
+{
+	"classId": "uuid",
+	"title": "Thong bao",
+	"bodyDelta": { "ops": [{ "insert": "Noi dung" }] },
+	"bodyPlain": "Noi dung"
+}
+```
+
+- Validation:
+	- `classId`: UUID bat buoc
+	- `bodyDelta` hoac `bodyPlain`: bat buoc it nhat 1 truong
+	- `title`: optional, max 500 ky tu
+
+- Success:
+	- `201`
+
+```json
+{
+	"message": "Post created successfully.",
+	"post": {
+		"id": "uuid",
+		"type": "normal",
+		"title": "Thong bao",
+		"body_delta": { "ops": [] },
+		"body_plain": "Noi dung",
+		"author_id": "uuid",
+		"author_name": "Nguyen Van A",
+		"created_at": "2026-05-01T10:00:00.000Z",
+		"updated_at": "2026-05-01T10:00:00.000Z"
+	}
+}
+```
+
+- Error:
+	- `400 { "message": "bodyDelta or bodyPlain is required." }`
+	- `403 { "message": "You do not have permission to access this class." }`
+	- `404 { "message": "Class not found." }`
+
+#### PATCH `/api/posts/:postId`
+
+Cap nhat post (chi author).
+
+- Auth: Bắt buộc token
+- Roles: `teacher`/`student` (author)
+- Body (it nhat 1 field): `title`, `bodyDelta`, `bodyPlain`
+
+- Success:
+	- `200`
+
+```json
+{
+	"message": "Post updated successfully.",
+	"post": {
+		"id": "uuid",
+		"type": "normal",
+		"title": "Thong bao moi",
+		"body_delta": { "ops": [] },
+		"body_plain": "Noi dung moi",
+		"author_id": "uuid",
+		"author_name": "Nguyen Van A",
+		"created_at": "2026-05-01T10:00:00.000Z",
+		"updated_at": "2026-05-01T11:00:00.000Z"
+	}
+}
+```
+
+- Error:
+	- `400 { "message": "Session posts cannot be updated." }`
+	- `403 { "message": "You do not have permission to update this post." }`
+	- `404 { "message": "Post not found." }`
+
+#### DELETE `/api/posts/:postId`
+
+Xoa post (author hoac teacher owner).
+
+- Auth: Bắt buộc token
+- Roles: teacher owner hoặc author
+
+- Success:
+	- `200`
+
+```json
+{
+	"message": "Post deleted successfully.",
+	"post": { "id": "uuid" }
+}
+```
+
+- Error:
+	- `400 { "message": "Session posts cannot be deleted." }`
+	- `403 { "message": "You do not have permission to delete this post." }`
+	- `404 { "message": "Post not found." }`
+
+---
+
+### 4.6 Files
+
+#### GET `/api/files/class/:classId/categories`
+
+Lấy danh sách categories.
+
+- Auth: Bắt buộc token
+- Roles: teacher owner hoặc student member
+
+- Success:
+	- `200`
+
+```json
+{
+	"categories": [
+		{ "id": "uuid", "name": "General", "folder_count": 2, "created_at": "2026-05-01T10:00:00.000Z" }
+	]
+}
+```
+
+#### POST `/api/files/class/:classId/categories`
+
+Tao category.
+
+- Auth: Bắt buộc token
+- Roles: teacher owner
+- Body:
+
+```json
+{ "name": "General" }
+```
+
+- Success:
+	- `201`
+
+```json
+{
+	"message": "Category created successfully.",
+	"category": {
+		"id": "uuid",
+		"class_id": "uuid",
+		"name": "General",
+		"created_at": "2026-05-01T10:00:00.000Z"
+	}
+}
+```
+
+- Error:
+	- `409 { "message": "Category name already exists in this class." }`
+
+#### DELETE `/api/files/class/:classId/categories/:categoryId`
+
+Xoa category (cascade).
+
+- Auth: Bắt buộc token
+- Roles: teacher owner
+
+- Success:
+	- `200`
+
+```json
+{ "message": "Category deleted successfully." }
+```
+
+#### GET `/api/files/class/:classId/categories/:categoryId/folders`
+
+Lấy danh sách folders.
+
+- Auth: Bắt buộc token
+- Roles: teacher owner hoặc student member
+
+- Success:
+	- `200`
+
+```json
+{
+	"folders": [
+		{ "id": "uuid", "name": "Tai lieu", "file_count": 3, "created_at": "2026-05-01T10:00:00.000Z" }
+	]
+}
+```
+
+#### POST `/api/files/class/:classId/categories/:categoryId/folders`
+
+Tao folder.
+
+- Auth: Bắt buộc token
+- Roles: teacher owner
+- Body:
+
+```json
+{ "name": "Tai lieu" }
+```
+
+- Success:
+	- `201`
+
+```json
+{
+	"message": "Folder created successfully.",
+	"folder": {
+		"id": "uuid",
+		"class_id": "uuid",
+		"category_id": "uuid",
+		"name": "Tai lieu",
+		"created_at": "2026-05-01T10:00:00.000Z"
+	}
+}
+```
+
+- Error:
+	- `409 { "message": "Folder name already exists in this category." }`
+
+#### DELETE `/api/files/class/:classId/categories/:categoryId/folders/:folderId`
+
+Xoa folder (cascade).
+
+- Auth: Bắt buộc token
+- Roles: teacher owner
+
+- Success:
+	- `200`
+
+```json
+{ "message": "Folder deleted successfully." }
+```
+
+#### POST `/api/files/class/:classId/folders/:folderId/upload`
+
+Upload file vao folder.
+
+- Auth: Bắt buộc token
+- Roles: teacher owner
+- Content-Type: `multipart/form-data`
+- Field: `file` (single), max 50MB
+
+- Success:
+	- `201`
+
+```json
+{
+	"message": "File uploaded successfully.",
+	"file": {
+		"id": "uuid",
+		"original_name": "Bai_tap.pdf",
+		"mime_type": "application/pdf",
+		"size_bytes": 204800,
+		"created_at": "2026-05-01T10:00:00.000Z"
+	}
+}
+```
+
+- Error:
+	- `400 { "message": "file is required." }`
+	- `413 { "message": "File exceeds 50MB limit." }`
+
+#### GET `/api/files/class/:classId/folders/:folderId/files`
+
+Lấy danh sách files trong folder.
+
+- Auth: Bắt buộc token
+- Roles: teacher owner hoặc student member
+
+- Success:
+	- `200`
+
+```json
+{
+	"files": [
+		{
+			"id": "uuid",
+			"original_name": "Bai_tap.pdf",
+			"mime_type": "application/pdf",
+			"size_bytes": 204800,
+			"uploaded_by_name": "Nguyen Van A",
+			"created_at": "2026-05-01T10:00:00.000Z"
+		}
+	]
+}
+```
+
+#### GET `/api/files/:fileId/download-url`
+
+Lay presigned URL download.
+
+- Auth: Bắt buộc token
+- Roles: teacher owner hoặc student member
+
+- Success:
+	- `200`
+
+```json
+{
+	"download_url": "http://localhost:9000/class-files/...?X-Amz-Signature=...",
+	"expires_in_seconds": 3600
+}
+```
+
+#### DELETE `/api/files/:fileId`
+
+Xoa file (MinIO truoc, DB sau).
+
+- Auth: Bắt buộc token
+- Roles: teacher owner
+
+- Success:
+	- `200`
+
+```json
+{ "message": "File deleted successfully." }
+```
+
 ## 5) Error chung
 
 - Endpoint không tồn tại:

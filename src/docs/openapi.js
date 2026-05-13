@@ -16,6 +16,8 @@ const openapiSpec = {
     { name: 'Users' },
     { name: 'Classes' },
     { name: 'Sessions' },
+    { name: 'Posts' },
+    { name: 'Files' },
   ],
   components: {
     securitySchemes: {
@@ -259,6 +261,92 @@ const openapiSpec = {
         required: ['content'],
         properties: {
           content: { type: 'string' },
+        },
+      },
+      Post: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', format: 'uuid' },
+          class_id: { type: 'string', format: 'uuid' },
+          author_id: { type: 'string', format: 'uuid' },
+          type: { type: 'string', enum: ['normal', 'session'] },
+          title: { type: 'string', nullable: true },
+          body_delta: { type: 'object', nullable: true },
+          body_plain: { type: 'string', nullable: true },
+          session_id: { type: 'string', format: 'uuid', nullable: true },
+          author_name: { type: 'string' },
+          session_title: { type: 'string', nullable: true },
+          session_status: { type: 'string', enum: ['scheduled', 'ongoing', 'completed'], nullable: true },
+          session_scheduled_at: { type: 'string', format: 'date-time', nullable: true },
+          created_at: { type: 'string', format: 'date-time' },
+          updated_at: { type: 'string', format: 'date-time' },
+        },
+      },
+      CreatePostBody: {
+        type: 'object',
+        required: ['classId'],
+        properties: {
+          classId: { type: 'string', format: 'uuid' },
+          title: { type: 'string', maxLength: 500 },
+          bodyDelta: { type: 'object' },
+          bodyPlain: { type: 'string' },
+        },
+      },
+      UpdatePostBody: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', maxLength: 500 },
+          bodyDelta: { type: 'object' },
+          bodyPlain: { type: 'string' },
+        },
+      },
+      Category: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', format: 'uuid' },
+          class_id: { type: 'string', format: 'uuid' },
+          name: { type: 'string' },
+          created_at: { type: 'string', format: 'date-time' },
+          folder_count: { type: 'integer' },
+        },
+      },
+      Folder: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', format: 'uuid' },
+          class_id: { type: 'string', format: 'uuid' },
+          category_id: { type: 'string', format: 'uuid' },
+          name: { type: 'string' },
+          created_at: { type: 'string', format: 'date-time' },
+          file_count: { type: 'integer' },
+        },
+      },
+      ClassFile: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', format: 'uuid' },
+          original_name: { type: 'string' },
+          mime_type: { type: 'string', nullable: true },
+          size_bytes: { type: 'integer' },
+          uploaded_by_name: { type: 'string' },
+          created_at: { type: 'string', format: 'date-time' },
+        },
+      },
+      UploadFileResponse: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', format: 'uuid' },
+          original_name: { type: 'string' },
+          mime_type: { type: 'string', nullable: true },
+          size_bytes: { type: 'integer' },
+          created_at: { type: 'string', format: 'date-time' },
+        },
+      },
+      DownloadUrlResponse: {
+        type: 'object',
+        properties: {
+          download_url: { type: 'string' },
+          expires_in_seconds: { type: 'integer', example: 3600 },
         },
       },
     },
@@ -1625,6 +1713,734 @@ const openapiSpec = {
           },
           404: {
             description: 'Session not found',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+        },
+      },
+    },
+    '/api/posts': {
+      post: {
+        tags: ['Posts'],
+        summary: 'Create normal post',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/CreatePostBody' },
+            },
+          },
+        },
+        responses: {
+          201: {
+            description: 'Post created',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    message: { type: 'string' },
+                    post: { $ref: '#/components/schemas/Post' },
+                  },
+                },
+              },
+            },
+          },
+          400: {
+            description: 'Validation error',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          401: {
+            description: 'Unauthorized',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          403: {
+            description: 'Forbidden',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          404: {
+            description: 'Class not found',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+        },
+      },
+    },
+    '/api/posts/class/{classId}': {
+      get: {
+        tags: ['Posts'],
+        summary: 'List posts by class',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            in: 'path',
+            name: 'classId',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            in: 'query',
+            name: 'limit',
+            required: false,
+            schema: { type: 'integer', default: 20 },
+          },
+          {
+            in: 'query',
+            name: 'offset',
+            required: false,
+            schema: { type: 'integer', default: 0 },
+          },
+        ],
+        responses: {
+          200: {
+            description: 'Posts list',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    posts: {
+                      type: 'array',
+                      items: { $ref: '#/components/schemas/Post' },
+                    },
+                    total_count: { type: 'integer' },
+                    limit: { type: 'integer' },
+                    offset: { type: 'integer' },
+                  },
+                },
+              },
+            },
+          },
+          400: {
+            description: 'Validation error',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          401: {
+            description: 'Unauthorized',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          403: {
+            description: 'Forbidden',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          404: {
+            description: 'Class not found',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+        },
+      },
+    },
+    '/api/posts/{postId}': {
+      get: {
+        tags: ['Posts'],
+        summary: 'Get post detail',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            in: 'path',
+            name: 'postId',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          200: {
+            description: 'Post detail',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: { post: { $ref: '#/components/schemas/Post' } },
+                },
+              },
+            },
+          },
+          400: {
+            description: 'Validation error',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          401: {
+            description: 'Unauthorized',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          403: {
+            description: 'Forbidden',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          404: {
+            description: 'Post not found',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+        },
+      },
+      patch: {
+        tags: ['Posts'],
+        summary: 'Update post (author only)',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            in: 'path',
+            name: 'postId',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/UpdatePostBody' },
+            },
+          },
+        },
+        responses: {
+          200: {
+            description: 'Post updated',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    message: { type: 'string' },
+                    post: { $ref: '#/components/schemas/Post' },
+                  },
+                },
+              },
+            },
+          },
+          400: {
+            description: 'Validation error',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          401: {
+            description: 'Unauthorized',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          403: {
+            description: 'Forbidden',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          404: {
+            description: 'Post not found',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+        },
+      },
+      delete: {
+        tags: ['Posts'],
+        summary: 'Delete post (author or class teacher)',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            in: 'path',
+            name: 'postId',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          200: {
+            description: 'Post deleted',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    message: { type: 'string' },
+                    post: {
+                      type: 'object',
+                      properties: { id: { type: 'string', format: 'uuid' } },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          400: {
+            description: 'Validation error',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          401: {
+            description: 'Unauthorized',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          403: {
+            description: 'Forbidden',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          404: {
+            description: 'Post not found',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+        },
+      },
+    },
+    '/api/files/class/{classId}/categories': {
+      get: {
+        tags: ['Files'],
+        summary: 'List categories by class',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            in: 'path',
+            name: 'classId',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          200: {
+            description: 'Categories list',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    categories: {
+                      type: 'array',
+                      items: { $ref: '#/components/schemas/Category' },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          400: {
+            description: 'Validation error',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          401: {
+            description: 'Unauthorized',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          403: {
+            description: 'Forbidden',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          404: {
+            description: 'Class not found',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+        },
+      },
+      post: {
+        tags: ['Files'],
+        summary: 'Create category (teacher only)',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            in: 'path',
+            name: 'classId',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['name'],
+                properties: { name: { type: 'string' } },
+              },
+            },
+          },
+        },
+        responses: {
+          201: {
+            description: 'Category created',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    message: { type: 'string' },
+                    category: { $ref: '#/components/schemas/Category' },
+                  },
+                },
+              },
+            },
+          },
+          400: {
+            description: 'Validation error',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          401: {
+            description: 'Unauthorized',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          403: {
+            description: 'Forbidden',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          404: {
+            description: 'Class not found',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          409: {
+            description: 'Category already exists',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+        },
+      },
+    },
+    '/api/files/class/{classId}/categories/{categoryId}': {
+      delete: {
+        tags: ['Files'],
+        summary: 'Delete category (teacher only)',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { in: 'path', name: 'classId', required: true, schema: { type: 'string', format: 'uuid' } },
+          { in: 'path', name: 'categoryId', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        responses: {
+          200: {
+            description: 'Category deleted',
+            content: {
+              'application/json': {
+                schema: { type: 'object', properties: { message: { type: 'string' } } },
+              },
+            },
+          },
+          400: {
+            description: 'Validation error',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          401: {
+            description: 'Unauthorized',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          403: {
+            description: 'Forbidden',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          404: {
+            description: 'Category not found',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+        },
+      },
+    },
+    '/api/files/class/{classId}/categories/{categoryId}/folders': {
+      get: {
+        tags: ['Files'],
+        summary: 'List folders by category',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { in: 'path', name: 'classId', required: true, schema: { type: 'string', format: 'uuid' } },
+          { in: 'path', name: 'categoryId', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        responses: {
+          200: {
+            description: 'Folders list',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    folders: {
+                      type: 'array',
+                      items: { $ref: '#/components/schemas/Folder' },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          400: {
+            description: 'Validation error',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          401: {
+            description: 'Unauthorized',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          403: {
+            description: 'Forbidden',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          404: {
+            description: 'Category not found',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+        },
+      },
+      post: {
+        tags: ['Files'],
+        summary: 'Create folder (teacher only)',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { in: 'path', name: 'classId', required: true, schema: { type: 'string', format: 'uuid' } },
+          { in: 'path', name: 'categoryId', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['name'],
+                properties: { name: { type: 'string' } },
+              },
+            },
+          },
+        },
+        responses: {
+          201: {
+            description: 'Folder created',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    message: { type: 'string' },
+                    folder: { $ref: '#/components/schemas/Folder' },
+                  },
+                },
+              },
+            },
+          },
+          400: {
+            description: 'Validation error',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          401: {
+            description: 'Unauthorized',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          403: {
+            description: 'Forbidden',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          404: {
+            description: 'Category not found',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          409: {
+            description: 'Folder already exists',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+        },
+      },
+    },
+    '/api/files/class/{classId}/categories/{categoryId}/folders/{folderId}': {
+      delete: {
+        tags: ['Files'],
+        summary: 'Delete folder (teacher only)',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { in: 'path', name: 'classId', required: true, schema: { type: 'string', format: 'uuid' } },
+          { in: 'path', name: 'categoryId', required: true, schema: { type: 'string', format: 'uuid' } },
+          { in: 'path', name: 'folderId', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        responses: {
+          200: {
+            description: 'Folder deleted',
+            content: {
+              'application/json': {
+                schema: { type: 'object', properties: { message: { type: 'string' } } },
+              },
+            },
+          },
+          400: {
+            description: 'Validation error',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          401: {
+            description: 'Unauthorized',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          403: {
+            description: 'Forbidden',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          404: {
+            description: 'Folder not found',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+        },
+      },
+    },
+    '/api/files/class/{classId}/folders/{folderId}/upload': {
+      post: {
+        tags: ['Files'],
+        summary: 'Upload file to folder (teacher only)',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { in: 'path', name: 'classId', required: true, schema: { type: 'string', format: 'uuid' } },
+          { in: 'path', name: 'folderId', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'multipart/form-data': {
+              schema: {
+                type: 'object',
+                properties: {
+                  file: { type: 'string', format: 'binary' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          201: {
+            description: 'File uploaded',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    message: { type: 'string' },
+                    file: { $ref: '#/components/schemas/UploadFileResponse' },
+                  },
+                },
+              },
+            },
+          },
+          400: {
+            description: 'Validation error',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          401: {
+            description: 'Unauthorized',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          403: {
+            description: 'Forbidden',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          404: {
+            description: 'Folder not found',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          413: {
+            description: 'File too large',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+        },
+      },
+    },
+    '/api/files/class/{classId}/folders/{folderId}/files': {
+      get: {
+        tags: ['Files'],
+        summary: 'List files in folder',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { in: 'path', name: 'classId', required: true, schema: { type: 'string', format: 'uuid' } },
+          { in: 'path', name: 'folderId', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        responses: {
+          200: {
+            description: 'Files list',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    files: {
+                      type: 'array',
+                      items: { $ref: '#/components/schemas/ClassFile' },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          400: {
+            description: 'Validation error',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          401: {
+            description: 'Unauthorized',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          403: {
+            description: 'Forbidden',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          404: {
+            description: 'Folder not found',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+        },
+      },
+    },
+    '/api/files/{fileId}/download-url': {
+      get: {
+        tags: ['Files'],
+        summary: 'Get file download URL',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { in: 'path', name: 'fileId', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        responses: {
+          200: {
+            description: 'Download URL generated',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/DownloadUrlResponse' },
+              },
+            },
+          },
+          400: {
+            description: 'Validation error',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          401: {
+            description: 'Unauthorized',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          403: {
+            description: 'Forbidden',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          404: {
+            description: 'File not found',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          500: {
+            description: 'Failed to generate URL',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+        },
+      },
+    },
+    '/api/files/{fileId}': {
+      delete: {
+        tags: ['Files'],
+        summary: 'Delete file (teacher only)',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { in: 'path', name: 'fileId', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        responses: {
+          200: {
+            description: 'File deleted',
+            content: {
+              'application/json': {
+                schema: { type: 'object', properties: { message: { type: 'string' } } },
+              },
+            },
+          },
+          400: {
+            description: 'Validation error',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          401: {
+            description: 'Unauthorized',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          403: {
+            description: 'Forbidden',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          404: {
+            description: 'File not found',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          500: {
+            description: 'Unable to delete file from storage',
             content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
           },
         },

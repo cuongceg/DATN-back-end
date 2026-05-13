@@ -1,257 +1,474 @@
-# 📋 Current Tasks — Session Scheduling Feature
+# CURRENT_TASKS.md — Backend Implementation
+
+> Đọc `SKILLS.md` trước khi bắt đầu bất kỳ task nào.
+> Làm tuần tự theo thứ tự task. Mỗi task hoàn thành thì đánh dấu `[x]`.
 
 ---
 
-## ✅ ĐÃ HOÀN THÀNH
+## TASK-BE-01 — DB Migration: Bảng `posts`
 
-### Backend
-| Task | Mô tả |
-|---|---|
-| B-1 | Migration thêm cột `scheduled_at TIMESTAMPTZ` vào bảng `sessions` |
-| B-2 | `POST /api/sessions` lưu và trả về `scheduled_at` |
-| B-3 | `PATCH /api/sessions/:id` — cập nhật `title`, `scheduledAt` (chỉ status `scheduled`) |
-| B-4 | `DELETE /api/sessions/:id` — chỉ xoá được session status `scheduled` |
-| B-5 | `GET /api/sessions/my?from=&to=` — trả về sessions kèm `class_name` (JOIN `classes`) |
-| B-6 | Tất cả response sessions đều trả về `scheduled_at` |
+**Mục tiêu:** Tạo bảng lưu posts của lớp học, gồm cả post thường và session card.
 
-### Frontend
-| Task | Mô tả |
-|---|---|
-| F-1 | `SessionModel` thêm `scheduledAt`, `className`, `displayTime`, `isEditable`, `isOngoing`, `copyWith` |
-| F-2 | `SessionService` — đủ 5 methods: fetch range, fetch by class, create, update, delete |
-| F-3 | `SessionProvider` — `loadSessionsForRange`, `createSession`, `updateSession`, `deleteSession`, `startSession` (trả về `SessionModel?`) |
-| F-4 | `SessionDataSource` — map `SessionModel` → `Appointment` dùng `displayTime`, `SessionStatus` enum, fallback `endTime = startTime + 1h` |
-| F-5 | `CreateSessionDialog` — glassmorphism, create/edit mode, `scheduledAt` gửi lên `.toUtc()` |
-| F-6 | `SessionDetailPopup` — read-only cho student, Edit/Delete/Start cho teacher, callback `onStart(SessionModel)` |
-| F-7 | `CalendarDesktopScreen` — inject `SessionProvider`, load theo tuần, `onTap` mở popup, loading overlay |
-| UI-1 | Xoá sidebar (`CalendarSidebar`, `_MiniMonthCalendar`) khỏi `CalendarDesktopScreen` |
-| UI-2 | `CalendarTopBar` — bỏ Work week dropdown, More button, `_CalendarMoreAction` enum |
-| UI-3 | Filter lớp — `_ClassFilterButton` + `_ClassFilterPopup`, state `_filteredClassId` |
-| UI-4 | "Meet now" — `_MeetNowClassPickerDialog` chọn lớp active, `_startMeetNow` tạo + start session ngay |
-| UI-5 | `SessionProvider.createSession` — dùng cho Meet now flow |
-| BUG-1 | Timezone: thêm `.toLocal()` trong `SessionModel.fromJson`, `.toUtc()` khi gửi API |
-| BUG-2 | `startSession` trả về `SessionModel?`, `SessionDetailPopup` callback `onStart`, navigate sau start |
-
----
-
-## 🐛 BUG CẦN SỬA
-
-### BUG-3 · Filter lớp không thể reset về "Tất cả lớp"
-
-**Triệu chứng:** Sau khi chọn filter 1 lớp cụ thể, không có cách nào quay lại xem tất cả lớp.
-
-**Nguyên nhân:** `PopupMenuButton` không fire `onSelected` khi `value == null` — đây là behaviour mặc định của Flutter, item có `value: null` bị bỏ qua.
-
-**File:** `lib/features/calendar/screens/calendar_screen.dart` (class `_ClassFilterPopup`)
-
-**Fix:** Chuyển item "Tất cả lớp" sang dùng `onTap` trực tiếp thay vì `onSelected`:
-
-```dart
-// Trước — không hoạt động vì value: null bị Flutter bỏ qua
-PopupMenuItem<String?>(
-  value: null,
-  child: ...,
-)
-
-// Sau — dùng onTap để gọi callback trực tiếp
-PopupMenuItem<String?>(
-  onTap: () => onFilterChanged(null),
-  child: Row(
-    children: [
-      Icon(Icons.layers_outlined, size: 18, color: filteredClassId == null ? scheme.primary : scheme.onSurfaceVariant),
-      const SizedBox(width: 10),
-      Text(
-        'Tất cả lớp',
-        style: TextStyle(
-          color: filteredClassId == null ? scheme.primary : null,
-          fontWeight: filteredClassId == null ? FontWeight.w600 : FontWeight.normal,
-        ),
-      ),
-      if (filteredClassId == null) ...[
-        const Spacer(),
-        Icon(Icons.check, size: 16, color: scheme.primary),
-      ],
-    ],
-  ),
-),
-```
-
-> Các item lớp cụ thể giữ nguyên dùng `value: cls.id` qua `onSelected` — chỉ item "Tất cả lớp" cần fix.
-
----
-
-### BUG-4 · Session đặt lịch trước không có `end_time` — calendar chip hiển thị sai thời lượng
-
-**Triệu chứng:** Session `scheduled` chưa có `end_time` (DB null). `SessionDataSource` đang fallback `endTime = displayTime + 1 giờ` cứng — teacher muốn tự chọn thời lượng khi đặt lịch.
-
----
-
-#### BUG-4a · Backend — thêm cột `scheduled_end_at`
-
-**File:** `migrations/add_scheduled_end_at_to_sessions.sql`
+**Việc cần làm:**
+Thêm vào `init.sql` hoặc tạo `migrations/002_posts.sql`:
 
 ```sql
-ALTER TABLE sessions
-  ADD COLUMN IF NOT EXISTS scheduled_end_at TIMESTAMPTZ;
+CREATE TYPE post_type AS ENUM ('normal', 'session');
 
-ALTER TABLE sessions
-  ADD CONSTRAINT chk_sessions_scheduled_time
-    CHECK (
-      scheduled_end_at IS NULL
-      OR scheduled_at IS NULL
-      OR scheduled_end_at > scheduled_at
-    );
+CREATE TABLE IF NOT EXISTS posts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    class_id UUID NOT NULL,
+    author_id UUID NOT NULL,
+    type post_type NOT NULL DEFAULT 'normal',
+    title VARCHAR(500),
+    body_delta JSONB,
+    body_plain TEXT,
+    session_id UUID,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT fk_posts_class FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
+    CONSTRAINT fk_posts_author FOREIGN KEY (author_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_posts_session FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE,
+    CONSTRAINT chk_posts_session_type CHECK (
+        (type = 'session' AND session_id IS NOT NULL) OR
+        (type = 'normal' AND session_id IS NULL)
+    )
+);
+
+CREATE INDEX IF NOT EXISTS idx_posts_class_id ON posts(class_id);
+CREATE INDEX IF NOT EXISTS idx_posts_author_id ON posts(author_id);
+CREATE INDEX IF NOT EXISTS idx_posts_session_id ON posts(session_id);
 ```
 
-**Cập nhật `POST /api/sessions`** — nhận thêm `scheduledEndAt` (optional):
+**Acceptance criteria:**
+- [x] Migration chạy không lỗi trên DB hiện tại
+- [x] CHECK constraint ngăn tạo post `normal` có `session_id` và ngược lại
 
+---
+
+## TASK-BE-02 — DB Migration: Bảng `categories`, `folders`, `class_files`
+
+**Mục tiêu:** Cấu trúc 2 cấp cho file management: Category → Folder → File.
+
+Tạo `migrations/003_files.sql`:
+
+```sql
+CREATE TABLE IF NOT EXISTS categories (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    class_id UUID NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT fk_categories_class FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
+    CONSTRAINT uq_categories_class_name UNIQUE (class_id, name)
+);
+
+CREATE TABLE IF NOT EXISTS folders (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    category_id UUID NOT NULL,
+    class_id UUID NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT fk_folders_category FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE,
+    CONSTRAINT fk_folders_class FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
+    CONSTRAINT uq_folders_category_name UNIQUE (category_id, name)
+);
+
+CREATE TABLE IF NOT EXISTS class_files (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    folder_id UUID NOT NULL,
+    class_id UUID NOT NULL,
+    uploaded_by UUID NOT NULL,
+    original_name VARCHAR(500) NOT NULL,
+    minio_object_key VARCHAR(1000) NOT NULL UNIQUE,
+    mime_type VARCHAR(255),
+    size_bytes BIGINT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT fk_class_files_folder FOREIGN KEY (folder_id) REFERENCES folders(id) ON DELETE CASCADE,
+    CONSTRAINT fk_class_files_class FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
+    CONSTRAINT fk_class_files_uploader FOREIGN KEY (uploaded_by) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_categories_class_id ON categories(class_id);
+CREATE INDEX IF NOT EXISTS idx_folders_category_id ON folders(category_id);
+CREATE INDEX IF NOT EXISTS idx_class_files_folder_id ON class_files(folder_id);
+```
+
+**Acceptance criteria:**
+- [x] Migration chạy không lỗi
+- [x] UNIQUE constraint ngăn trùng tên category trong cùng class, trùng tên folder trong cùng category
+
+---
+
+## TASK-BE-03 — MinIO Client Setup
+
+**Mục tiêu:** Khởi tạo MinIO client singleton và đảm bảo bucket tồn tại khi app start.
+Cập nhật file docker-compose.yml để tạo một container minio và có volumes
+Tạo `src/services/minio.client.js`:
+- Đọc config từ env: `MINIO_ENDPOINT`, `MINIO_PORT`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `MINIO_USE_SSL` (default `false`)
+- Bucket name constant: `BUCKET_NAME = 'class-files'`
+- Export async `ensureBucket()` — tạo bucket nếu chưa tồn tại
+- Export `minioClient` instance
+
+Gọi `ensureBucket()` trong app startup (`src/app.js` hoặc `src/index.js`).
+
+Thêm vào `.env.example`:
+```
+MINIO_ENDPOINT=localhost
+MINIO_PORT=9000
+MINIO_ACCESS_KEY=minioadmin
+MINIO_SECRET_KEY=minioadmin
+MINIO_USE_SSL=false
+```
+
+**Acceptance criteria:**
+- [x] App start không crash khi MinIO chưa có bucket
+- [x] Nếu MinIO không kết nối được thì log warning, không crash toàn app
+
+---
+
+## TASK-BE-04 — Posts API: GET list & GET detail
+
+**Mục tiêu:** Lấy danh sách posts của lớp (phân trang) và chi tiết 1 post.
+
+Tạo `src/features/posts/posts.routes.js`, `posts.controller.js`, `posts.service.js`.
+Đăng ký trong `src/app.js`: `app.use('/api/posts', postsRouter)`
+
+### GET `/api/posts/class/:classId`
+
+- **Auth:** Bắt buộc. Teacher sở hữu lớp HOẶC student là thành viên lớp.
+- **Query params:** `limit` (default 20, max 100), `offset` (default 0)
+- **Service:** JOIN posts với users (lấy `author_name`), JOIN sessions (lấy `session_title`, `session_status`, `scheduled_at` khi type = session). Sắp xếp `created_at DESC`.
+
+Response `200`:
 ```json
 {
-  "classId": "uuid",
-  "title": "Buoi hoc 1",
-  "scheduledAt": "2026-05-05T08:00:00.000Z",
-  "scheduledEndAt": "2026-05-05T09:30:00.000Z"
+  "posts": [
+    {
+      "id": "uuid",
+      "type": "normal",
+      "title": "Thông báo bài tập",
+      "body_delta": { "ops": [] },
+      "body_plain": "Nội dung...",
+      "author_id": "uuid",
+      "author_name": "Nguyen Van A",
+      "session_id": null,
+      "session_title": null,
+      "session_status": null,
+      "session_scheduled_at": null,
+      "created_at": "2026-05-01T10:00:00.000Z",
+      "updated_at": "2026-05-01T10:00:00.000Z"
+    }
+  ],
+  "total_count": 15,
+  "limit": 20,
+  "offset": 0
 }
 ```
 
-Validation server-side: nếu có cả hai thì `scheduledEndAt > scheduledAt`.
+Errors: `403` không có quyền truy cập lớp, `404` lớp không tồn tại.
 
-**Cập nhật `PATCH /api/sessions/:id`** — nhận thêm `scheduledEndAt` (optional).
+### GET `/api/posts/:postId`
 
-**Cập nhật tất cả response chứa session object** — thêm `scheduled_end_at`:
+- **Auth:** Bắt buộc. Kiểm tra quyền theo `class_id` của post.
+- Response `200`: object post đầy đủ (single item).
+- Errors: `404` post không tồn tại, `403` không có quyền.
 
+**Acceptance criteria:**
+- [x] Pagination đúng với `limit` và `offset`
+- [x] Session post trả về đầy đủ `session_*` fields
+- [x] Student không thuộc lớp nhận `403`
+
+---
+
+## TASK-BE-05 — Posts API: CREATE normal post
+
+**Mục tiêu:** Teacher hoặc student tạo post mới trong lớp.
+
+### POST `/api/posts`
+
+- **Auth:** Bắt buộc. Teacher sở hữu lớp HOẶC student thành viên lớp.
+- **Body:**
 ```json
 {
-  "session": {
+  "classId": "uuid",
+  "title": "Thông báo",
+  "bodyDelta": { "ops": [{ "insert": "Nội dung..." }] },
+  "bodyPlain": "Nội dung..."
+}
+```
+- **Validation:** `classId` UUID bắt buộc; `bodyDelta` hoặc `bodyPlain` ít nhất 1 không rỗng; `title` optional max 500 ký tự.
+- **Service:** Insert post với `type = 'normal'`, `author_id = req.user.id`. Trả về post kèm `author_name`.
+
+Response `201`:
+```json
+{
+  "message": "Post created successfully.",
+  "post": { "...post object..." }
+}
+```
+
+Errors: `400` thiếu field bắt buộc, `403` không phải thành viên lớp, `404` lớp không tồn tại.
+
+**Acceptance criteria:**
+- [x] Admin không tạo được post (403)
+- [x] Student không thuộc lớp nhận 403
+
+---
+
+## TASK-BE-06 — Posts API: Auto-create session post
+
+**Mục tiêu:** Khi teacher tạo session, backend tự động tạo 1 post loại `session` trong lớp.
+
+**Việc cần làm:**
+Trong `sessions.service.js`, ngay sau khi INSERT session thành công, thêm:
+
+```js
+await pool.query(
+  `INSERT INTO posts (class_id, author_id, type, session_id)
+   VALUES ($1, $2, 'session', $3)`,
+  [classId, teacherId, newSession.id]
+);
+```
+
+Không tạo endpoint riêng. Đây là side-effect nội bộ của sessions service.
+
+**Acceptance criteria:**
+- [x] Sau khi tạo session, GET `/api/posts/class/:classId` trả về post mới với `type = 'session'`
+- [x] Xóa session → post tương ứng tự xóa theo (ON DELETE CASCADE đã có)
+- [x] Không có duplicate post nếu retry
+
+---
+
+## TASK-BE-07 — Posts API: UPDATE & DELETE
+
+**Mục tiêu:** Tác giả sửa/xóa bài của mình. Session post không được phép sửa/xóa trực tiếp.
+
+### PATCH `/api/posts/:postId`
+
+- **Auth:** Bắt buộc. Chỉ `author_id = req.user.id`.
+- **Body** (ít nhất 1 field): `title`, `bodyDelta`, `bodyPlain`
+- **Service:** Verify `type = 'normal'`, verify tác giả, update fields + `updated_at = NOW()`.
+
+Response `200`: `{ "message": "Post updated successfully.", "post": {...} }`
+
+Errors: `400` không có field update hoặc post là `type = 'session'`, `403` không phải tác giả, `404` không tồn tại.
+
+### DELETE `/api/posts/:postId`
+
+- **Auth:** Bắt buộc. Tác giả HOẶC teacher sở hữu lớp.
+- **Service logic:**
+  1. Fetch post lấy `class_id` và `author_id`
+  2. Không cho xóa post `type = 'session'` (trả `400`)
+  3. Nếu requester là teacher sở hữu lớp → xóa bất kỳ normal post nào trong lớp
+  4. Nếu requester là student → chỉ xóa post của chính mình
+
+Response `200`: `{ "message": "Post deleted successfully.", "post": { "id": "uuid" } }`
+
+Errors: `400` cố xóa session post, `403` không có quyền, `404` không tồn tại.
+
+**Acceptance criteria:**
+- [x] Student A không xóa được post của Student B
+- [x] Teacher xóa được bất kỳ normal post nào trong lớp của mình
+- [x] Session post không bị xóa qua endpoint này
+
+---
+
+## TASK-BE-08 — Files API: Categories CRUD
+
+**Mục tiêu:** Teacher quản lý categories (cấp 1) trong lớp.
+
+Tạo `src/features/files/files.routes.js`, `files.controller.js`, `files.service.js`.
+Đăng ký: `app.use('/api/files', filesRouter)`
+
+### GET `/api/files/class/:classId/categories`
+- **Auth:** Teacher sở hữu lớp hoặc student thành viên.
+- Response `200`:
+```json
+{
+  "categories": [
+    { "id": "uuid", "name": "General", "folder_count": 2, "created_at": "..." }
+  ]
+}
+```
+`folder_count` đếm từ bảng `folders`.
+
+### POST `/api/files/class/:classId/categories`
+- **Auth:** Teacher sở hữu lớp.
+- **Body:** `{ "name": "General" }`
+- **Validation:** `name` bắt buộc, không rỗng, max 255 ký tự.
+- Response `201`: `{ "message": "Category created successfully.", "category": {...} }`
+- Error `409` nếu tên đã tồn tại trong lớp.
+
+### DELETE `/api/files/class/:classId/categories/:categoryId`
+- **Auth:** Teacher sở hữu lớp.
+- **Service:** Xóa DB record (CASCADE xóa folders + class_files). Thêm TODO comment để xử lý MinIO cleanup sau bằng background job — không block request này.
+- Response `200`: `{ "message": "Category deleted successfully." }`
+
+**Acceptance criteria:**
+- [x] Student không tạo/xóa được category (403)
+- [x] Trùng tên trong cùng lớp trả về 409
+
+---
+
+## TASK-BE-09 — Files API: Folders CRUD
+
+**Mục tiêu:** Teacher quản lý folders (cấp 2) trong category.
+
+### GET `/api/files/class/:classId/categories/:categoryId/folders`
+- **Auth:** Teacher sở hữu lớp hoặc student thành viên.
+- Response `200`:
+```json
+{
+  "folders": [
+    { "id": "uuid", "name": "Tài liệu lớp học", "file_count": 3, "created_at": "..." }
+  ]
+}
+```
+
+### POST `/api/files/class/:classId/categories/:categoryId/folders`
+- **Auth:** Teacher sở hữu lớp.
+- **Body:** `{ "name": "Tài liệu lớp học" }`
+- Response `201`: `{ "message": "Folder created successfully.", "folder": {...} }`
+- Error `409` nếu tên folder đã tồn tại trong category.
+
+### DELETE `/api/files/class/:classId/categories/:categoryId/folders/:folderId`
+- **Auth:** Teacher sở hữu lớp.
+- **Service:** Xóa DB record (CASCADE). TODO MinIO cleanup.
+- Response `200`: `{ "message": "Folder deleted successfully." }`
+
+**Acceptance criteria:**
+- [x] `404` nếu `categoryId` không thuộc `classId` đang request
+
+---
+
+## TASK-BE-10 — Files API: Upload file
+
+**Mục tiêu:** Teacher upload file vào folder.
+
+Cài dependency nếu chưa có: `npm install multer`
+
+### POST `/api/files/class/:classId/folders/:folderId/upload`
+
+- **Auth:** Teacher sở hữu lớp.
+- **Content-Type:** `multipart/form-data`, field `file` (single file), max 50MB.
+- **Service logic:**
+  1. Verify teacher sở hữu lớp
+  2. Verify `folderId` tồn tại và thuộc lớp đó
+  3. Generate object key: `{classId}/{folderId}/{uuid}_{originalname}`
+  4. Upload buffer lên MinIO với content-type từ multer
+  5. Insert record vào `class_files`
+
+Response `201`:
+```json
+{
+  "message": "File uploaded successfully.",
+  "file": {
     "id": "uuid",
-    "class_id": "uuid",
-    "title": "Buoi hoc 1",
-    "scheduled_at": "2026-05-05T08:00:00.000Z",
-    "scheduled_end_at": "2026-05-05T09:30:00.000Z",
-    "start_time": null,
-    "end_time": null,
-    "status": "scheduled"
+    "original_name": "Bai_tap.pdf",
+    "mime_type": "application/pdf",
+    "size_bytes": 204800,
+    "created_at": "..."
   }
 }
 ```
 
-Endpoints cần cập nhật: `POST /api/sessions`, `PATCH /api/sessions/:id`, `GET /api/sessions/my`, `GET /api/sessions/class/:classId`, `GET /api/sessions/:id`.
+Errors: `400` không có file, `413` quá 50MB, `403` không phải teacher sở hữu lớp, `404` folder không tồn tại.
+
+**Acceptance criteria:**
+- [x] File xuất hiện trên MinIO sau upload thành công
+- [x] `class_files` record có đúng `minio_object_key`
 
 ---
 
-#### BUG-4b · Frontend — thêm `scheduledEndAt` vào `SessionModel`
+## TASK-BE-11 — Files API: List files & Download URL
 
-**File:** `lib/features/session/models/session_model.dart`
+**Mục tiêu:** Lấy danh sách file trong folder và tạo presigned URL để download.
 
-```dart
-// Thêm field
-final DateTime? scheduledEndAt;
-
-// Trong fromJson — parse + toLocal()
-scheduledEndAt: json['scheduled_end_at'] != null
-    ? DateTime.parse(json['scheduled_end_at'] as String).toLocal() : null,
-
-// Trong copyWith
-DateTime? scheduledEndAt,
-// ...
-scheduledEndAt: scheduledEndAt ?? this.scheduledEndAt,
-
-// Getter mới — display end time cho calendar chip
-DateTime? get displayEndTime => scheduledEndAt ?? endTime;
-```
-
----
-
-#### BUG-4c · Frontend — cập nhật `SessionDataSource` dùng `displayEndTime`
-
-**File:** `lib/features/session/screens/widgets/session_data_source.dart`
-
-```dart
-// Trước
-endTime: s.displayTime!.add(const Duration(hours: 1)),
-
-// Sau — dùng displayEndTime nếu có, chỉ fallback +1h khi không có
-endTime: s.displayEndTime ?? s.displayTime!.add(const Duration(hours: 1)),
-```
-
----
-
-#### BUG-4d · Frontend — cập nhật `CreateSessionDialog` thêm trường "Giờ kết thúc"
-
-**File:** `lib/features/session/screens/widgets/create_session_dialog.dart`
-
-Thêm `DateTimePicker` thứ 2 cho `scheduledEndAt`, đặt ngay dưới picker giờ bắt đầu:
-- Chỉ hiển thị khi `_scheduledAt != null`.
-- Default: `_scheduledAt + 1 giờ` khi user vừa chọn giờ bắt đầu.
-- Validate trước submit: `_scheduledEndAt` phải sau `_scheduledAt`.
-- Gửi lên API dưới dạng UTC.
-
-```dart
-// State
-DateTime? _scheduledAt;
-DateTime? _scheduledEndAt;
-
-// Khi user chọn _scheduledAt — auto-fill end
-onScheduledAtChanged: (dt) {
-  setState(() {
-    _scheduledAt = dt;
-    // Auto-fill giờ kết thúc nếu chưa có hoặc end <= start mới
-    if (_scheduledEndAt == null || !_scheduledEndAt!.isAfter(dt)) {
-      _scheduledEndAt = dt.add(const Duration(hours: 1));
+### GET `/api/files/class/:classId/folders/:folderId/files`
+- **Auth:** Teacher sở hữu lớp hoặc student thành viên.
+- Response `200`:
+```json
+{
+  "files": [
+    {
+      "id": "uuid",
+      "original_name": "Bai_tap.pdf",
+      "mime_type": "application/pdf",
+      "size_bytes": 204800,
+      "uploaded_by_name": "Nguyen Van A",
+      "created_at": "..."
     }
-  });
-},
-
-// Validate trước khi submit
-if (_scheduledAt != null &&
-    _scheduledEndAt != null &&
-    !_scheduledEndAt!.isAfter(_scheduledAt!)) {
-  // Show error: "Giờ kết thúc phải sau giờ bắt đầu"
-  return;
+  ]
 }
-
-// Gửi API
-await sessionProvider.createSession(
-  classId: _selectedClassId!,
-  title: _titleController.text.trim(),
-  scheduledAt: _scheduledAt?.toUtc(),
-  scheduledEndAt: _scheduledEndAt?.toUtc(),
-);
 ```
+
+### GET `/api/files/:fileId/download-url`
+- **Auth:** Teacher sở hữu lớp hoặc student thành viên lớp chứa file.
+- **Service:**
+  1. Fetch file record lấy `minio_object_key` và `class_id`
+  2. Verify quyền truy cập lớp
+  3. Gọi `minioClient.presignedGetObject(BUCKET_NAME, objectKey, 3600)`
+
+Response `200`:
+```json
+{
+  "download_url": "http://localhost:9000/class-files/...?X-Amz-Signature=...",
+  "expires_in_seconds": 3600
+}
+```
+
+**Acceptance criteria:**
+- [x] Presigned URL hoạt động khi truy cập trực tiếp trong browser
+- [x] URL hết hạn sau 1 giờ
 
 ---
 
-#### BUG-4e · Frontend — cập nhật `SessionService` truyền `scheduledEndAt`
+## TASK-BE-12 — Files API: Delete file
 
-**File:** `lib/features/session/services/session_service.dart`
+**Mục tiêu:** Teacher xóa file khỏi folder.
 
-```dart
-Future<SessionModel> createSession({
-  required String classId,
-  required String title,
-  DateTime? scheduledAt,
-  DateTime? scheduledEndAt,   // ← thêm
-});
+### DELETE `/api/files/:fileId`
 
-Future<SessionModel> updateSession({
-  required String sessionId,
-  String? title,
-  DateTime? scheduledAt,
-  DateTime? scheduledEndAt,   // ← thêm
-});
-```
+- **Auth:** Teacher sở hữu lớp chứa file.
+- **Service:**
+  1. Fetch file record lấy `minio_object_key` và `class_id`
+  2. Verify teacher sở hữu lớp
+  3. Xóa object trên MinIO: `minioClient.removeObject(BUCKET_NAME, objectKey)`
+  4. Nếu MinIO xóa thành công → xóa DB record
+  5. Nếu MinIO lỗi → không xóa DB, trả `500`
+
+Response `200`: `{ "message": "File deleted successfully." }`
+Errors: `403`, `404`, `500` nếu MinIO lỗi.
+
+**Acceptance criteria:**
+- [x] File không còn trên MinIO sau khi xóa
+- [x] DB record bị xóa
+- [x] Nếu MinIO lỗi, DB record vẫn còn (không xóa nửa chừng)
 
 ---
 
-## ✅ Thứ tự fix
+## TASK-BE-13 — Swagger Documentation
 
-**BUG-3** — 1 file, độc lập, fix ngay.
+**Mục tiêu:** Cập nhật Swagger annotations cho tất cả endpoints mới (TASK-BE-04 đến BE-12).
 
-**BUG-4** — theo thứ tự:
+Mỗi endpoint cần có `@swagger` JSDoc comment với: summary, request body schema, response schemas (200/201/400/403/404), security `bearerAuth`.
+
+Verify bằng cách truy cập `GET /api-docs` sau khi restart server.
+
+**Acceptance criteria:**
+- [x] Tất cả endpoints mới hiển thị trên Swagger UI
+- [x] Có thể test trực tiếp từ Swagger UI
+
+---
+
+## Thứ tự thực hiện
+
 ```
-BUG-4a (migration + backend endpoints)
-  → BUG-4b (SessionModel thêm field + getter)
-  → BUG-4e (SessionService thêm param)
-  → BUG-4c (SessionDataSource dùng displayEndTime)
-  → BUG-4d (CreateSessionDialog thêm picker giờ kết thúc)
+BE-01 → BE-02 → BE-03   (song song được)
+         ↓
+BE-04 → BE-05 → BE-06 → BE-07   (posts, tuần tự)
+         ↓
+BE-08 → BE-09 → BE-10 → BE-11 → BE-12   (files, tuần tự, cần BE-03)
+         ↓
+BE-13   (cuối cùng)
 ```
