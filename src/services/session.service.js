@@ -20,7 +20,15 @@ async function createSession(classId, teacherId, { title, scheduledAt, scheduled
     [classId, title, scheduledAt || null, scheduledEndAt || null]
   );
 
-  return result.rows[0];
+  const newSession = result.rows[0];
+
+  await pool.query(
+    `INSERT INTO posts (class_id, author_id, type, session_id)
+     VALUES ($1, $2, 'session', $3)`,
+    [classId, teacherId, newSession.id]
+  );
+
+  return newSession;
 }
 
 async function getSessionsByClass(classId) {
