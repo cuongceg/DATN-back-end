@@ -12,66 +12,42 @@ const upload = multer({
 
 router.use(authenticateToken);
 
-router.get(
-  '/class/:classId/categories',
-  authorizeRoles('teacher', 'student'),
-  filesController.getCategories
-);
-router.post(
-  '/class/:classId/categories',
-  authorizeRoles('teacher'),
-  filesController.createCategory
-);
-router.delete(
-  '/class/:classId/categories/:categoryId',
-  authorizeRoles('teacher'),
-  filesController.deleteCategory
-);
+function handleMulterErrors(err, req, res, next) {
+  if (err && err.code === 'LIMIT_FILE_SIZE') {
+    return res.status(413).json({ message: 'File exceeds 50MB limit.' });
+  }
 
-router.get(
-  '/class/:classId/categories/:categoryId/folders',
-  authorizeRoles('teacher', 'student'),
-  filesController.getFolders
-);
-router.post(
-  '/class/:classId/categories/:categoryId/folders',
-  authorizeRoles('teacher'),
-  filesController.createFolder
-);
-router.delete(
-  '/class/:classId/categories/:categoryId/folders/:folderId',
-  authorizeRoles('teacher'),
-  filesController.deleteFolder
-);
+  return next(err);
+}
 
+// 1) Create folder or upload file by path
 router.post(
-  '/class/:classId/folders/:folderId/upload',
+  '/class/:classId/content',
   authorizeRoles('teacher'),
   upload.single('file'),
-  filesController.uploadFile,
-  (err, req, res, next) => {
-    if (err && err.code === 'LIMIT_FILE_SIZE') {
-      return res.status(413).json({ message: 'File exceeds 50MB limit.' });
-    }
-
-    return next(err);
-  }
+  filesController.createContent,
+  handleMulterErrors
 );
 
+// 2) List items (folders + files) directly under a path
 router.get(
-  '/class/:classId/folders/:folderId/files',
+  '/class/:classId/content',
   authorizeRoles('teacher', 'student'),
-  filesController.listFiles
+  filesController.listContent
 );
+
+// 3) Download by file path
 router.get(
-  '/:fileId/download-url',
+  '/class/:classId/download',
   authorizeRoles('teacher', 'student'),
-  filesController.getDownloadUrl
+  filesController.downloadByPath
 );
+
+// 4) Delete file or folder by path (only creator can delete)
 router.delete(
-  '/:fileId',
-  authorizeRoles('teacher'),
-  filesController.deleteFile
+  '/class/:classId/content',
+  authorizeRoles('teacher', 'student'),
+  filesController.deleteContent
 );
 
 module.exports = router;

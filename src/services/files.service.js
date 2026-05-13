@@ -1,26 +1,77 @@
-const crypto = require('crypto');
+const path = require('path');
 const pool = require('../config/db');
 const { minioClient, BUCKET_NAME } = require('./minio.client');
 
+function createHttpError(status, message) {
+  const error = new Error(message);
+  error.status = status;
+  return error;
+}
+
+function normalizeAndValidatePosixPath(inputPath, { requireFilename }) {
+  if (typeof inputPath !== 'string') {
+    throw createHttpError(400, 'path must be a string.');
+  }
+
+  const trimmed = inputPath.trim();
+  if (!trimmed) {
+    throw createHttpError(400, 'path is required.');
+  }
+
+  if (!trimmed.startsWith('/')) {
+    throw createHttpError(400, 'path must start with "/".');
+  }
+
+  if (trimmed.includes('\\') || trimmed.includes('\u0000')) {
+    throw createHttpError(400, 'path contains invalid characters.');
+  }
+
+  const parts = trimmed.split('/').filter(Boolean);
+  if (parts.some((segment) => segment === '.' || segment === '..')) {
+    throw createHttpError(400, 'path must not contain "." or ".." segments.');
+  }
+
+  if (requireFilename && parts.length === 0) {
+    throw createHttpError(400, 'path must include a file name.');
+  }
+
+  if (parts.length === 0) {
+    return { normalized: '/', dirPath: '', fileName: '' };
+  }
+
+  const normalized = '/' + parts.join('/');
+  const fileName = requireFilename ? parts[parts.length - 1] : '';
+  const dirParts = requireFilename ? parts.slice(0, -1) : parts;
+  const dirPath = dirParts.join('/');
+
+  if (requireFilename && !fileName) {
+    throw createHttpError(400, 'path must include a file name.');
+  }
+
+  if (normalized.length > 1000) {
+    throw createHttpError(400, 'path is too long.');
+  }
+
+  return { normalized, dirPath, fileName };
+}
+
+function formatListingPath(normalizedFolderPath) {
+  if (normalizedFolderPath === '/') return '/';
+  return `${normalizedFolderPath}/`;
+}
+
 async function ensureClassAccess(user, classId) {
-  const classResult = await pool.query(
-    'SELECT id, teacher_id FROM classes WHERE id = $1',
-    [classId]
-  );
+  const classResult = await pool.query('SELECT id, teacher_id FROM classes WHERE id = $1', [classId]);
 
   if (classResult.rows.length === 0) {
-    const error = new Error('Class not found.');
-    error.status = 404;
-    throw error;
+    throw createHttpError(404, 'Class not found.');
   }
 
   const classData = classResult.rows[0];
 
   if (user.role === 'teacher') {
     if (classData.teacher_id !== user.id) {
-      const error = new Error('You do not have permission to access this class.');
-      error.status = 403;
-      throw error;
+      throw createHttpError(403, 'You do not have permission to access this class.');
     }
 
     return classData;
@@ -33,267 +84,306 @@ async function ensureClassAccess(user, classId) {
     );
 
     if (memberResult.rows.length === 0) {
-      const error = new Error('You are not a member of this class.');
-      error.status = 403;
-      throw error;
+      throw createHttpError(403, 'You are not a member of this class.');
     }
 
     return classData;
   }
 
-  const error = new Error('You do not have permission to access this class.');
-  error.status = 403;
-  throw error;
+  throw createHttpError(403, 'You do not have permission to access this class.');
 }
 
 async function ensureTeacherOwner(user, classId) {
   if (user.role !== 'teacher') {
-    const error = new Error('You do not have permission to manage categories.');
-    error.status = 403;
-    throw error;
+    throw createHttpError(403, 'Forbidden: insufficient permissions.');
   }
 
-  const classResult = await pool.query(
-    'SELECT id, teacher_id FROM classes WHERE id = $1',
-    [classId]
-  );
+  const classResult = await pool.query('SELECT id, teacher_id FROM classes WHERE id = $1', [classId]);
 
   if (classResult.rows.length === 0) {
-    const error = new Error('Class not found.');
-    error.status = 404;
-    throw error;
+    throw createHttpError(404, 'Class not found.');
   }
 
   const classData = classResult.rows[0];
   if (classData.teacher_id !== user.id) {
-    const error = new Error('You do not have permission to manage this class.');
-    error.status = 403;
-    throw error;
+    throw createHttpError(403, 'You do not have permission to manage this class.');
   }
 
   return classData;
 }
 
-async function ensureCategoryInClass(classId, categoryId) {
-  const categoryResult = await pool.query(
-    'SELECT id FROM categories WHERE id = $1 AND class_id = $2',
-    [categoryId, classId]
-  );
-
-  if (categoryResult.rows.length === 0) {
-    const error = new Error('Category not found.');
-    error.status = 404;
-    throw error;
-  }
-
-  return categoryResult.rows[0];
-}
-
-async function ensureFolderInClass(classId, folderId) {
-  const folderResult = await pool.query(
-    'SELECT id, category_id FROM folders WHERE id = $1 AND class_id = $2',
-    [folderId, classId]
-  );
-
-  if (folderResult.rows.length === 0) {
-    const error = new Error('Folder not found.');
-    error.status = 404;
-    throw error;
-  }
-
-  return folderResult.rows[0];
-}
-
-async function getCategories(classId, user) {
-  await ensureClassAccess(user, classId);
-
+async function findFolderByPath(classId, folderPath) {
   const result = await pool.query(
-    `SELECT c.id,
-            c.name,
-            c.created_at,
-            COALESCE(COUNT(f.id), 0)::int AS folder_count
-     FROM categories c
-     LEFT JOIN folders f ON f.category_id = c.id
-     WHERE c.class_id = $1
-     GROUP BY c.id, c.name, c.created_at
-     ORDER BY c.created_at DESC, c.id DESC`,
-    [classId]
+    'SELECT id, class_id, parent_id, name, path, created_by, created_at FROM folders WHERE class_id = $1 AND path = $2',
+    [classId, folderPath]
   );
-
-  return result.rows;
+  return result.rows[0] || null;
 }
 
-async function createCategory(classId, user, name) {
+async function findFileByPath(classId, filePath) {
+  const result = await pool.query(
+    `SELECT id,
+            class_id,
+            path,
+            created_by,
+            original_name,
+            minio_object_key,
+            mime_type,
+            size_bytes,
+            created_at
+     FROM class_files
+     WHERE class_id = $1 AND path = $2`,
+    [classId, filePath]
+  );
+  return result.rows[0] || null;
+}
+
+async function assertPathNotTaken(classId, normalizedPath) {
+  const [folder, file] = await Promise.all([
+    findFolderByPath(classId, normalizedPath),
+    findFileByPath(classId, normalizedPath),
+  ]);
+
+  if (folder || file) {
+    throw createHttpError(409, 'Path already exists.');
+  }
+}
+
+async function ensureFoldersForDirPath(classId, user, dirPathNormalized) {
+  // dirPathNormalized: '/', '/a', '/a/b', ...
+  if (dirPathNormalized === '/') {
+    return null;
+  }
+
+  const segments = dirPathNormalized.split('/').filter(Boolean);
+  let parentId = null;
+
+  for (let i = 0; i < segments.length; i += 1) {
+    const segment = segments[i];
+    const currentPath = '/' + segments.slice(0, i + 1).join('/');
+
+    const fileAtFolderPath = await findFileByPath(classId, currentPath);
+    if (fileAtFolderPath) {
+      throw createHttpError(400, 'Parent path is a file.');
+    }
+
+    const insertResult = await pool.query(
+      `INSERT INTO folders (class_id, parent_id, name, path, created_by)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (class_id, path) DO NOTHING
+       RETURNING id, parent_id, name, path, created_by, created_at`,
+      [classId, parentId, segment, currentPath, user.id]
+    );
+
+    if (insertResult.rows.length > 0) {
+      parentId = insertResult.rows[0].id;
+      continue;
+    }
+
+    const existing = await findFolderByPath(classId, currentPath);
+    if (!existing) {
+      throw createHttpError(500, 'Unable to create folder.');
+    }
+
+    parentId = existing.id;
+  }
+
+  return parentId;
+}
+
+async function createFolder(classId, user, folderPathInput) {
   await ensureTeacherOwner(user, classId);
+
+  const { normalized } = normalizeAndValidatePosixPath(folderPathInput, { requireFilename: false });
+
+  if (normalized === '/') {
+    throw createHttpError(400, 'path must not be root (/).');
+  }
+
+  await assertPathNotTaken(classId, normalized);
+
+  const parentDir = path.posix.dirname(normalized);
+  const parentNormalized = parentDir === '.' ? '/' : parentDir;
+
+  await ensureFoldersForDirPath(classId, user, parentNormalized);
+
+  const name = path.posix.basename(normalized);
+  const parentFolder = parentNormalized === '/' ? null : await findFolderByPath(classId, parentNormalized);
+  const parentId = parentFolder ? parentFolder.id : null;
 
   try {
     const result = await pool.query(
-      `INSERT INTO categories (class_id, name)
-       VALUES ($1, $2)
-       RETURNING id, class_id, name, created_at`,
-      [classId, name]
+      `INSERT INTO folders (class_id, parent_id, name, path, created_by)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, path, name, created_at`,
+      [classId, parentId, name, normalized, user.id]
     );
 
     return result.rows[0];
   } catch (error) {
     if (error.code === '23505') {
-      const conflict = new Error('Category name already exists in this class.');
-      conflict.status = 409;
-      throw conflict;
+      throw createHttpError(409, 'Path already exists.');
     }
-
     throw error;
   }
 }
 
-async function deleteCategory(classId, categoryId, user) {
+async function uploadFile(classId, user, file, targetPathInput) {
   await ensureTeacherOwner(user, classId);
 
-  const categoryResult = await pool.query(
-    'SELECT id FROM categories WHERE id = $1 AND class_id = $2',
-    [categoryId, classId]
-  );
+  const { normalized, dirPath, fileName } = normalizeAndValidatePosixPath(targetPathInput, {
+    requireFilename: true,
+  });
 
-  if (categoryResult.rows.length === 0) {
-    const error = new Error('Category not found.');
-    error.status = 404;
-    throw error;
+  if (normalized === '/') {
+    throw createHttpError(400, 'path must include a file name.');
   }
 
-  // TODO: enqueue MinIO cleanup for deleted category files.
-  await pool.query(
-    'DELETE FROM categories WHERE id = $1 AND class_id = $2',
-    [categoryId, classId]
-  );
+  const safeFileName = path.posix.basename(fileName);
+  if (!safeFileName || safeFileName === '.' || safeFileName === '..') {
+    throw createHttpError(400, 'Invalid file name in path.');
+  }
+
+  await assertPathNotTaken(classId, normalized);
+
+  const dirNormalized = dirPath ? `/${dirPath}` : '/';
+  await ensureFoldersForDirPath(classId, user, dirNormalized);
+
+  const objectKey = `${classId}${normalized}`;
+
+  try {
+    await minioClient.putObject(
+      BUCKET_NAME,
+      objectKey,
+      file.buffer,
+      file.size,
+      { 'Content-Type': file.mimetype || 'application/octet-stream' }
+    );
+  } catch (error) {
+    throw createHttpError(500, 'Unable to upload file to storage.');
+  }
+
+  try {
+    const result = await pool.query(
+      `INSERT INTO class_files (class_id, path, created_by, original_name, minio_object_key, mime_type, size_bytes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING id, path, original_name, mime_type, size_bytes, created_at`,
+      [
+        classId,
+        normalized,
+        user.id,
+        file.originalname || safeFileName,
+        objectKey,
+        file.mimetype || null,
+        file.size,
+      ]
+    );
+
+    return result.rows[0];
+  } catch (error) {
+    if (error.code === '23505') {
+      try {
+        await minioClient.removeObject(BUCKET_NAME, objectKey);
+      } catch (cleanupError) {
+        // best-effort cleanup
+      }
+      throw createHttpError(409, 'Path already exists.');
+    }
+    throw error;
+  }
 }
 
-async function getFolders(classId, categoryId, user) {
-  await ensureClassAccess(user, classId);
-  await ensureCategoryInClass(classId, categoryId);
+function buildDirectChildFilePatterns(normalizedFolderPath) {
+  // normalizedFolderPath: '/' or '/a/b'
+  const prefix = normalizedFolderPath === '/' ? '/' : `${normalizedFolderPath}/`;
+  const likePattern = `${prefix}%`;
+  const notLikePattern = `${prefix}%/%`;
+  return { likePattern, notLikePattern, prefix };
+}
 
-  const result = await pool.query(
+async function listContent(classId, user, folderPathQuery) {
+  await ensureClassAccess(user, classId);
+
+  const queryPath = folderPathQuery == null || folderPathQuery === '' ? '/' : String(folderPathQuery);
+  const { normalized } = normalizeAndValidatePosixPath(queryPath, { requireFilename: false });
+
+  let parentFolderId = null;
+
+  if (normalized !== '/') {
+    const folder = await findFolderByPath(classId, normalized);
+    if (!folder) {
+      throw createHttpError(404, 'Path not found.');
+    }
+    parentFolderId = folder.id;
+  }
+
+  const foldersResult = await pool.query(
     `SELECT f.id,
             f.name,
+            f.path,
             f.created_at,
-            COALESCE(COUNT(cf.id), 0)::int AS file_count
+            u.full_name AS created_by_name
      FROM folders f
-     LEFT JOIN class_files cf ON cf.folder_id = f.id
-     WHERE f.class_id = $1 AND f.category_id = $2
-     GROUP BY f.id, f.name, f.created_at
-     ORDER BY f.created_at DESC, f.id DESC`,
-    [classId, categoryId]
+     JOIN users u ON u.id = f.created_by
+     WHERE f.class_id = $1 AND ${normalized === '/' ? 'f.parent_id IS NULL' : 'f.parent_id = $2'}
+     ORDER BY f.name ASC, f.created_at DESC`,
+    normalized === '/' ? [classId] : [classId, parentFolderId]
   );
 
-  return result.rows;
-}
+  const { likePattern, notLikePattern } = buildDirectChildFilePatterns(normalized);
 
-async function createFolder(classId, categoryId, user, name) {
-  await ensureTeacherOwner(user, classId);
-  await ensureCategoryInClass(classId, categoryId);
-
-  try {
-    const result = await pool.query(
-      `INSERT INTO folders (class_id, category_id, name)
-       VALUES ($1, $2, $3)
-       RETURNING id, class_id, category_id, name, created_at`,
-      [classId, categoryId, name]
-    );
-
-    return result.rows[0];
-  } catch (error) {
-    if (error.code === '23505') {
-      const conflict = new Error('Folder name already exists in this category.');
-      conflict.status = 409;
-      throw conflict;
-    }
-
-    throw error;
-  }
-}
-
-async function deleteFolder(classId, categoryId, folderId, user) {
-  await ensureTeacherOwner(user, classId);
-  await ensureCategoryInClass(classId, categoryId);
-
-  const folderResult = await pool.query(
-    'SELECT id FROM folders WHERE id = $1 AND class_id = $2 AND category_id = $3',
-    [folderId, classId, categoryId]
-  );
-
-  if (folderResult.rows.length === 0) {
-    const error = new Error('Folder not found.');
-    error.status = 404;
-    throw error;
-  }
-
-  // TODO: enqueue MinIO cleanup for deleted folder files.
-  await pool.query(
-    'DELETE FROM folders WHERE id = $1 AND class_id = $2 AND category_id = $3',
-    [folderId, classId, categoryId]
-  );
-}
-
-async function uploadFile(classId, folderId, user, file) {
-  await ensureTeacherOwner(user, classId);
-  await ensureFolderInClass(classId, folderId);
-
-  const objectKey = `${classId}/${folderId}/${crypto.randomUUID()}_${file.originalname}`;
-
-  await minioClient.putObject(
-    BUCKET_NAME,
-    objectKey,
-    file.buffer,
-    file.size,
-    { 'Content-Type': file.mimetype }
-  );
-
-  const result = await pool.query(
-    `INSERT INTO class_files (folder_id, class_id, uploaded_by, original_name, minio_object_key, mime_type, size_bytes)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
-     RETURNING id, original_name, mime_type, size_bytes, created_at`,
-    [folderId, classId, user.id, file.originalname, objectKey, file.mimetype || null, file.size]
-  );
-
-  return result.rows[0];
-}
-
-async function listFiles(classId, folderId, user) {
-  await ensureClassAccess(user, classId);
-  await ensureFolderInClass(classId, folderId);
-
-  const result = await pool.query(
+  const filesResult = await pool.query(
     `SELECT cf.id,
+            cf.path,
             cf.original_name,
             cf.mime_type,
             cf.size_bytes,
             cf.created_at,
-            u.full_name AS uploaded_by_name
+            u.full_name AS created_by_name
      FROM class_files cf
-     JOIN users u ON u.id = cf.uploaded_by
-     WHERE cf.class_id = $1 AND cf.folder_id = $2
-     ORDER BY cf.created_at DESC, cf.id DESC`,
-    [classId, folderId]
+     JOIN users u ON u.id = cf.created_by
+     WHERE cf.class_id = $1
+       AND cf.path LIKE $2
+       AND cf.path NOT LIKE $3
+     ORDER BY cf.path ASC, cf.created_at DESC`,
+    [classId, likePattern, notLikePattern]
   );
 
-  return result.rows;
+  const folderItems = foldersResult.rows.map((row) => ({
+    id: row.id,
+    type: 'folder',
+    name: row.name,
+    path: row.path,
+    created_at: row.created_at,
+    created_by_name: row.created_by_name,
+  }));
+
+  const fileItems = filesResult.rows.map((row) => ({
+    id: row.id,
+    type: 'file',
+    name: path.posix.basename(row.path),
+    path: row.path,
+    mime_type: row.mime_type,
+    size_bytes: row.size_bytes,
+    created_at: row.created_at,
+    created_by_name: row.created_by_name,
+  }));
+
+  return {
+    path: formatListingPath(normalized),
+    items: [...folderItems, ...fileItems],
+  };
 }
 
-async function getDownloadUrl(fileId, user) {
-  const fileResult = await pool.query(
-    `SELECT id, class_id, minio_object_key
-     FROM class_files
-     WHERE id = $1`,
-    [fileId]
-  );
+async function getDownloadUrlByPath(classId, user, filePathQuery) {
+  await ensureClassAccess(user, classId);
 
-  if (fileResult.rows.length === 0) {
-    const error = new Error('File not found.');
-    error.status = 404;
-    throw error;
+  const { normalized } = normalizeAndValidatePosixPath(filePathQuery, { requireFilename: true });
+
+  const fileRecord = await findFileByPath(classId, normalized);
+  if (!fileRecord) {
+    throw createHttpError(404, 'File not found.');
   }
-
-  const fileRecord = fileResult.rows[0];
-  await ensureClassAccess(user, fileRecord.class_id);
 
   try {
     const expiresInSeconds = 3600;
@@ -305,51 +395,65 @@ async function getDownloadUrl(fileId, user) {
 
     return { downloadUrl, expiresInSeconds };
   } catch (error) {
-    const err = new Error('Unable to generate download URL.');
-    err.status = 500;
-    throw err;
+    throw createHttpError(500, 'Unable to generate download URL.');
   }
 }
 
-async function deleteFile(fileId, user) {
-  const fileResult = await pool.query(
-    `SELECT id, class_id, minio_object_key
-     FROM class_files
-     WHERE id = $1`,
-    [fileId]
-  );
+async function deleteContentByPath(classId, user, deletePathQuery) {
+  await ensureClassAccess(user, classId);
 
-  if (fileResult.rows.length === 0) {
-    const error = new Error('File not found.');
-    error.status = 404;
-    throw error;
+  const { normalized } = normalizeAndValidatePosixPath(deletePathQuery, { requireFilename: false });
+
+  if (normalized === '/') {
+    throw createHttpError(400, 'Cannot delete root (/).');
   }
 
-  const fileRecord = fileResult.rows[0];
-  await ensureTeacherOwner(user, fileRecord.class_id);
+  const folder = await findFolderByPath(classId, normalized);
+  if (folder) {
+    if (folder.created_by !== user.id) {
+      throw createHttpError(403, 'You do not have permission to delete this folder.');
+    }
+
+    const childrenFolders = await pool.query(
+      'SELECT 1 FROM folders WHERE class_id = $1 AND parent_id = $2 LIMIT 1',
+      [classId, folder.id]
+    );
+
+    const childrenFiles = await pool.query(
+      'SELECT 1 FROM class_files WHERE class_id = $1 AND path LIKE $2 LIMIT 1',
+      [classId, `${folder.path}/%`]
+    );
+
+    if (childrenFolders.rows.length > 0 || childrenFiles.rows.length > 0) {
+      throw createHttpError(400, 'Folder is not empty. Please delete its contents first.');
+    }
+
+    await pool.query('DELETE FROM folders WHERE id = $1', [folder.id]);
+    return;
+  }
+
+  const fileRecord = await findFileByPath(classId, normalized);
+  if (!fileRecord) {
+    throw createHttpError(404, 'Path not found.');
+  }
+
+  if (fileRecord.created_by !== user.id) {
+    throw createHttpError(403, 'You do not have permission to delete this file.');
+  }
 
   try {
     await minioClient.removeObject(BUCKET_NAME, fileRecord.minio_object_key);
   } catch (error) {
-    const err = new Error('Unable to delete file from storage.');
-    err.status = 500;
-    throw err;
+    throw createHttpError(500, 'Unable to delete file from storage.');
   }
 
-  await pool.query('DELETE FROM class_files WHERE id = $1', [fileId]);
-
-  return { id: fileId };
+  await pool.query('DELETE FROM class_files WHERE id = $1', [fileRecord.id]);
 }
 
 module.exports = {
-  getCategories,
-  createCategory,
-  deleteCategory,
-  getFolders,
   createFolder,
-  deleteFolder,
   uploadFile,
-  listFiles,
-  getDownloadUrl,
-  deleteFile,
+  listContent,
+  getDownloadUrlByPath,
+  deleteContentByPath,
 };
