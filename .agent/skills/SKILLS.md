@@ -1,109 +1,125 @@
-# SKILLS.md — Backend Agent
+# BE_SKILLS.md — LiveKit Recording (Backend)
 
-## Stack & Conventions
+## Stack & môi trường
 
-### Runtime & Framework
-- **Node.js** với **Express.js**, cấu trúc MVC (có `routes/`, `controllers/`, `services/`, tham khảo phía dưới)
-- **PostgreSQL** qua `pg` (node-postgres), dùng raw SQL — không dùng ORM
-- **MinIO** (S3-compatible) cho file storage, dùng `minio` npm package
-- **JWT** Bearer token cho auth — middleware `authenticate` đã có sẵn, attach `req.user = { id, role, ... }`
-- **Swagger** JSDoc annotations — mọi endpoint mới phải có `@swagger` comment để `GET /api-docs` tự cập nhật
+- **Runtime**: Node.js + ExpressJS (đã deploy trên EC2 t3.micro)
+- **Database**: PostgreSQL (đã có — dùng cho sessions, users, classes, files)
+- **Object storage**: MinIO (đã dùng cho `/api/files`) — sẽ dùng lại cho recording output
+- **LiveKit SDK**: `livekit-server-sdk` (đã có trong `livekit_service.js`)
+- **LiveKit Egress**: chạy trên EC2 t3.xlarge (cùng máy với LiveKit Server + Redis)
+- **Auth**: JWT Bearer token — middleware đã có sẵn
 
-### Cấu trúc file convention (MVC)
+---
+
+## Kiến trúc hiện tại liên quan
+
 ```
-src/
-├── config/           # Cấu hình DB, LiveKit, env
-│   ├── database.js
-│   └── livekit.js    # LiveKit client config
-├── controllers/      # Xử lý request/response
-│   ├── auth.controller.js
-│   ├── user.controller.js
-│   ├── class.controller.js
-│   └── meeting.controller.js   ← MỚI
-├── models/           # Tương tác với PostgreSQL
-│   ├── user.model.js
-│   ├── class.model.js
-│   └── meeting.model.js        ← MỚI
-├── routes/           # Định nghĩa endpoints
-│   ├── auth.routes.js
-│   ├── user.routes.js
-│   ├── class.routes.js
-│   └── meeting.routes.js       ← MỚI
-├── services/         # Business logic
-│   ├── livekit.service.js      ← MỚI (core)
-│   └── meeting.service.js      ← MỚI
-├── middleware/       # Auth, validation, error handling
-│   ├── auth.middleware.js
-│   └── validate.middleware.js
-└── utils/            # Helper functions
-    └── response.util.js
+livekit_service.js        → generateLiveKitToken, createRoom, deleteRoom, getActiveParticipants
+config/livekit.js         → roomService (RoomServiceClient)
+/api/sessions/:id/start   → tạo LiveKit room, trả livekit_room_id về DB
+/api/sessions/:id/token   → cấp JWT cho participant join room
+/api/files/...            → MinIO presigned URL pattern (tham khảo để làm recording)
 ```
 
-### Response format chuẩn
-```json
-// Success
-{ "message": "...", "data_key": { ... } }
+---
 
-// Error
-{ "message": "Human-readable error." }
-```
-HTTP status: `200` GET/PATCH, `201` POST tạo mới, `400` validation, `401/403` auth, `404` not found, `409` conflict, `500` server error.
+## Kiến thức cần có để implement
 
-### SQL conventions
-- Dùng `$1, $2, ...` parameterized queries — tuyệt đối không string interpolation
-- UUID primary key: `gen_random_uuid()` (pgcrypto đã enable)
-- Timestamp: `TIMESTAMPTZ NOT NULL DEFAULT NOW()`
-- Tên cột: `snake_case`
-- Foreign key constraint đặt tên: `fk_<table>_<ref>`, check constraint: `chk_<table>_<field>`
+### 1. LiveKit Egress API
+- `EgressClient` từ `livekit-server-sdk` — khác với `RoomServiceClient` đang dùng
+- `startRoomCompositeEgress(roomName, output, options)` — record toàn bộ room
+- `stopEgress(egressId)` — dừng recording
+- `listEgress({ roomName })` — kiểm tra egress đang chạy
+- Output type cần dùng: `EncodedFileOutput` với `filepath` trỏ tới MinIO/S3
 
-### Auth & Authorization pattern
 ```js
-router.post('/', authenticate, authorize('teacher', 'student'), controller.create);
-// authorize đã có sẵn, nhận rest params là allowed roles
+// Khởi tạo EgressClient
+const { EgressClient } = require('livekit-server-sdk');
+const egressClient = new EgressClient(
+  process.env.LIVEKIT_HOST,
+  process.env.LIVEKIT_API_KEY,
+  process.env.LIVEKIT_API_SECRET
+);
 ```
 
-### Error handling pattern
+### 2. Egress output config cho MinIO
+Egress hỗ trợ S3-compatible storage. MinIO dùng đúng format này:
+
 ```js
-// Trong controller — dùng try/catch, delegate lên global error handler
-try {
-  const result = await service.doSomething(params);
-  res.status(201).json({ message: '...', post: result });
-} catch (err) {
-  next(err);
-}
+const output = {
+  fileOutputs: [{
+    filepath: `recordings/{room_name}/{egress_id}.mp4`,
+    s3: {
+      accessKey: process.env.MINIO_ACCESS_KEY,
+      secret: process.env.MINIO_SECRET_KEY,
+      region: 'us-east-1',           // MinIO không quan trọng region
+      bucket: process.env.MINIO_RECORDING_BUCKET,
+      endpoint: process.env.MINIO_ENDPOINT, // http://minio-host:9000
+      forcePathStyle: true,           // BẮT BUỘC cho MinIO
+    }
+  }]
+};
 ```
 
-### Validation pattern
+### 3. LiveKit Webhook (egress_ended event)
+- Egress gửi webhook HTTP POST khi recording kết thúc
+- Payload chứa `egressId`, `fileResults[0].filename`, `fileResults[0].duration`
+- Dùng `WebhookReceiver` từ SDK để verify signature
+- Đây là cách duy nhất lấy được `s3_key` chính xác và `duration_seconds` sau khi stop
+
 ```js
-// Inline validation trong controller trước khi gọi service
-if (!body.content?.trim()) {
-  return res.status(400).json({ message: 'content is required.' });
-}
+const { WebhookReceiver } = require('livekit-server-sdk');
+const receiver = new WebhookReceiver(
+  process.env.LIVEKIT_API_KEY,
+  process.env.LIVEKIT_API_SECRET
+);
+// req phải là raw body (không qua JSON parser)
+const event = await receiver.receive(rawBody, req.headers['livekit-signature']);
+if (event.event === 'egress_ended') { /* cập nhật DB */ }
 ```
 
-## MinIO conventions
-- Bucket name: `class-files` (tạo nếu chưa tồn tại khi app start)
-- Object key pattern: `{classId}/{categoryId}/{folderId}/{uuid}_{originalFilename}`
-- Dùng `presignedGetObject` với expiry 1 giờ cho download URL
-- Upload từ FE: FE gọi endpoint backend → backend stream lên MinIO (dùng `multer` + `memoryStorage`)
-- Content-Type lưu vào MinIO object metadata
+### 4. MinIO Presigned URL cho video
+Pattern đã có sẵn ở `/api/files` — áp dụng y chang cho recordings:
 
-## Database patterns
+```js
+const url = await minioClient.presignedGetObject(
+  process.env.MINIO_RECORDING_BUCKET,
+  s3Key,
+  4 * 60 * 60  // TTL 4 giờ (đủ cho video dài)
+);
+```
 
-### Kiểm tra membership (student thuộc lớp)
+### 5. Role check trong recording context
+- Dùng `req.user.role` từ JWT middleware đã có
+- Chỉ `teacher` (owner của class) được start/stop
+- `teacher` + `student` member đều được xem list recordings
+- Map với pattern hiện tại: giống `/api/sessions/:id/start` chỉ cho `teacher`
+
+### 6. DB schema mới cần thêm — bảng `session_recordings`
+
 ```sql
-SELECT 1 FROM class_members WHERE class_id = $1 AND student_id = $2
+CREATE TABLE session_recordings (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id      UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  egress_id       TEXT NOT NULL UNIQUE,
+  status          TEXT NOT NULL DEFAULT 'recording',
+  -- 'recording' | 'completed' | 'failed'
+  s3_key          TEXT,           -- null cho đến khi webhook egress_ended về
+  duration_seconds INT,           -- null cho đến khi webhook về
+  started_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  ended_at        TIMESTAMPTZ,
+  started_by      UUID REFERENCES users(id)
+);
 ```
 
-### Kiểm tra teacher sở hữu lớp
-```sql
-SELECT 1 FROM classes WHERE id = $1 AND teacher_id = $2
-```
+---
 
-### Pagination
-```sql
-SELECT ... FROM posts WHERE class_id = $1
-ORDER BY created_at DESC
-LIMIT $2 OFFSET $3
-```
-Response luôn kèm `total_count` để FE tính số trang.
+## Conventions & patterns cần tuân thủ
+
+- **Response format**: giống toàn bộ API hiện tại — `{ message, <entity> }` hoặc `{ <entities>[] }`
+- **Error format**: `{ message: "..." }` với HTTP status phù hợp
+- **Auth middleware**: `authenticate` (đã có) + `requireRole(['teacher'])` nếu cần
+- **Naming**: snake_case trong DB và response JSON, camelCase trong JS
+- **Không dùng** `multipart/form-data` cho recording endpoints — tất cả là JSON
+- **Webhook endpoint** cần `express.raw()` thay vì `express.json()` để verify signature
+- **MinIO bucket** cho recordings nên tách riêng khỏi bucket `class-files` hiện tại

@@ -1340,6 +1340,99 @@ Chỉ `created_by = req.user.id` mới xóa được (áp dụng cả file lẫn
 	- `404` path không tồn tại
 	- `500` MinIO lỗi khi xóa file
 
+---
+
+### 4.7 Recordings
+
+Recording chỉ áp dụng cho session đang `ongoing`. Teacher (owner) có thể start/stop, teacher owner hoặc student member có thể xem list recordings đã `completed`.
+
+#### POST `/api/sessions/:sessionId/recordings/start`
+
+Start recording cho session.
+
+- Auth: Bắt buộc token
+- Roles: teacher owner
+- Body: none
+
+- Success:
+	- `201`
+
+```json
+{
+	"message": "Recording started successfully.",
+	"recording": {
+		"id": "uuid",
+		"egress_id": "EG_xxx",
+		"started_at": "2026-05-22T10:00:00.000Z"
+	}
+}
+```
+
+- Error:
+	- `400` session không phải `ongoing`
+	- `403` không phải teacher owner
+	- `409` đã có recording đang chạy
+
+#### POST `/api/sessions/:sessionId/recordings/stop`
+
+Stop recording theo `egress_id`.
+
+- Auth: Bắt buộc token
+- Roles: teacher owner
+- Body:
+
+```json
+{ "egress_id": "EG_xxx" }
+```
+
+- Success:
+	- `200`
+
+```json
+{
+	"message": "Recording stopped.",
+	"recording": {
+		"egress_id": "EG_xxx",
+		"status": "stopping"
+	}
+}
+```
+
+- Error:
+	- `400` thiếu `egress_id`
+	- `403` không phải teacher owner
+	- `404` egressId không tồn tại hoặc không thuộc session
+
+#### GET `/api/sessions/:sessionId/recordings`
+
+Danh sách recordings đã `completed` cho session (kèm presigned URL từ MinIO, TTL 4 giờ).
+
+- Auth: Bắt buộc token
+- Roles: teacher owner hoặc student member
+
+- Success:
+	- `200`
+
+```json
+{
+	"recordings": [
+		{
+			"id": "uuid",
+			"egress_id": "EG_xxx",
+			"duration_seconds": 3600,
+			"started_at": "2026-05-22T10:00:00.000Z",
+			"ended_at": "2026-05-22T11:00:00.000Z",
+			"download_url": "http://localhost:9000/session-recordings/...?X-Amz-Signature=...",
+			"expires_in_seconds": 14400
+		}
+	]
+}
+```
+
+- Error:
+	- `403` không có quyền truy cập session
+	- `404` session không tồn tại
+
 ## 5) Error chung
 
 - Endpoint không tồn tại:
