@@ -7,6 +7,7 @@ const MINIO_SECRET_KEY = process.env.MINIO_SECRET_KEY || '';
 const MINIO_USE_SSL = String(process.env.MINIO_USE_SSL || 'false').toLowerCase() === 'true';
 
 const BUCKET_NAME = 'class-files';
+const RECORDING_BUCKET_NAME = process.env.MINIO_RECORDING_BUCKET || 'session-recordings';
 
 const minioClient = new Minio.Client({
   endPoint: MINIO_ENDPOINT,
@@ -27,8 +28,21 @@ async function ensureBucket() {
   }
 }
 
+async function ensureRecordingBucket() {
+  try {
+    const exists = await minioClient.bucketExists(RECORDING_BUCKET_NAME);
+    if (!exists) {
+      await minioClient.makeBucket(RECORDING_BUCKET_NAME);
+    }
+  } catch (error) {
+    console.warn('MinIO recording bucket check failed:', error.message);
+  }
+}
+
 module.exports = {
   BUCKET_NAME,
+  RECORDING_BUCKET_NAME,
   minioClient,
   ensureBucket,
+  ensureRecordingBucket,
 };
