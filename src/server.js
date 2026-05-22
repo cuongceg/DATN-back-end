@@ -13,7 +13,7 @@ if (fs.existsSync(localEnvPath)) {
 
 const app = require('./app');
 const pool = require('./config/db');
-const { ensureBucket } = require('./services/minio.client');
+const { ensureBucket, ensureRecordingBucket } = require('./services/minio.client');
 
 const PORT = process.env.PORT || 3000;
 
@@ -24,6 +24,7 @@ async function startServer() {
     console.log('Database connection check passed.');
 
     await ensureBucket();
+    await ensureRecordingBucket();
 
     app.listen(PORT, () => {
       console.log(`Server is running on port ${PORT}`);

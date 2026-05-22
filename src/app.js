@@ -7,8 +7,13 @@ const classesRoutes = require('./routes/classes.routes');
 const sessionRoutes = require('./routes/session.routes');
 const postsRoutes = require('./routes/posts.routes');
 const filesRoutes = require('./routes/files.routes');
+const webhookRoutes = require('./routes/webhook.routes');
+const recordingRoutes = require('./routes/recording.routes');
 
 const app = express();
+
+// LiveKit webhooks must use raw body for signature verification.
+app.use('/api/webhooks', webhookRoutes);
 
 app.use(express.json());
 
@@ -23,6 +28,7 @@ app.use('/api/classes', classesRoutes);
 app.use('/api/sessions', sessionRoutes);
 app.use('/api/posts', postsRoutes);
 app.use('/api/files', filesRoutes);
+app.use('/api', recordingRoutes);
 
 app.use((req, res) => {
   return res.status(404).json({ message: 'Route not found.' });
