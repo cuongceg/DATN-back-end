@@ -65,9 +65,11 @@ async function startRecording(sessionId, startedByUserId) {
 
   const egressInfo = await egressClient.startRoomCompositeEgress(
     session.livekit_room_id,
-    { fileOutputs: [fileOutput] }, 
+    { file: fileOutput }, 
     options
   );
+
+  console.log('egressInfo:', JSON.stringify(egressInfo, null, 2));
 
   const egressId = egressInfo?.egressId || egressInfo?.egress_id;
   if (!egressId) {
