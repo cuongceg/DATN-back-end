@@ -48,7 +48,13 @@ async function startRecording(sessionId, startedByUserId) {
     .replace(/[^a-zA-Z0-9-_]+/g, '-')
     .replace(/^-+|-+$/g, '');
 
-  const filePath = `recordings/${classId}/${sessionTitle}-recording.mp4`;
+  const now = new Date();
+  const dd = String(now.getDate()).padStart(2, '0');
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const yyyy = String(now.getFullYear());
+  const datePath = `${dd}/${mm}/${yyyy}`;
+
+  const filePath = `recordings/${classId}/${sessionTitle}-recording-${datePath}.mp4`;
 
   const fileOutput = new EncodedFileOutput({
     fileType: EncodedFileType.MP4,
@@ -72,7 +78,7 @@ async function startRecording(sessionId, startedByUserId) {
 
   const egressInfo = await egressClient.startRoomCompositeEgress(
     session.livekit_room_id,
-    { fileOutputs: [fileOutput] },
+    { file: fileOutput },
     options
   );
 
