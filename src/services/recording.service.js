@@ -1,6 +1,7 @@
 const pool = require('../config/db');
 const { egressClient } = require('../config/livekit');
 const { minioClient, RECORDING_BUCKET_NAME } = require('./minio.client');
+const { EncodedFileOutput, EncodedFileType, S3Upload } = require('livekit-server-sdk');
 
 const RECORDING_EXPIRES_IN_SECONDS = 4 * 60 * 60;
 
@@ -42,21 +43,21 @@ async function startRecording(sessionId, startedByUserId) {
   const minioUseSsl = String(process.env.MINIO_USE_SSL || 'false').toLowerCase() === 'true';
   const minioEndpointUrl = `${minioUseSsl ? 'https' : 'http'}://${minioHost}:${minioPort}`;
 
-  const output = {
-    fileOutputs: [
-      {
-        filepath: `recordings/${sessionId}/{egress_id}.mp4`,
-        s3: {
-          accessKey: process.env.MINIO_ACCESS_KEY,
-          secret: process.env.MINIO_SECRET_KEY,
-          region: process.env.MINIO_REGION || 'us-east-1',
-          bucket: RECORDING_BUCKET_NAME,
-          endpoint: minioEndpointUrl,
-          forcePathStyle: true,
-        },
-      },
-    ],
-  };
+  const fileOutput = new EncodedFileOutput({
+  fileType: EncodedFileType.MP4,
+  filepath: `recordings/${sessionId}/{egress_id}.mp4`,
+  output: {
+    case: 's3',
+    value: new S3Upload({
+      accessKey: process.env.MINIO_ACCESS_KEY,
+      secret: process.env.MINIO_SECRET_KEY,
+      region: process.env.MINIO_REGION || 'us-east-1',
+      bucket: RECORDING_BUCKET_NAME,
+      endpoint: minioEndpointUrl,
+      forcePathStyle: true,
+    }),
+  },
+});
 
   const options = {
     layout: 'speaker',
@@ -64,7 +65,7 @@ async function startRecording(sessionId, startedByUserId) {
 
   const egressInfo = await egressClient.startRoomCompositeEgress(
     session.livekit_room_id,
-    output,
+    { fileOutputs: [fileOutput] }, 
     options
   );
 
