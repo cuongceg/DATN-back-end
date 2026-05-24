@@ -13,7 +13,7 @@ function createHttpError(status, message) {
 
 async function startRecording(sessionId, startedByUserId) {
   const sessionResult = await pool.query(
-    'SELECT id, livekit_room_id, status FROM sessions WHERE id = $1',
+    'SELECT id, livekit_room_id, status, class_id, title FROM sessions WHERE id = $1',
     [sessionId]
   );
 
@@ -38,26 +38,33 @@ async function startRecording(sessionId, startedByUserId) {
     throw createHttpError(409, 'A recording is already in progress.');
   }
 
-  const minioHost = process.env.MINIO_ENDPOINT || 'localhost';
+  const minioHost = process.env.MINIO_ENDPOINT_RECORDING || 'localhost';
   const minioPort = Number(process.env.MINIO_PORT || 9000);
   const minioUseSsl = String(process.env.MINIO_USE_SSL || 'false').toLowerCase() === 'true';
   const minioEndpointUrl = `${minioUseSsl ? 'https' : 'http'}://${minioHost}:${minioPort}`;
+  const classId = session.class_id;
+  const sessionTitle = String(session.title || 'session')
+    .trim()
+    .replace(/[^a-zA-Z0-9-_]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+  const filePath = `recordings/${classId}/${sessionTitle}-recording.mp4`;
 
   const fileOutput = new EncodedFileOutput({
-  fileType: EncodedFileType.MP4,
-  filepath: `recordings/${sessionId}/{egress_id}.mp4`,
-  output: {
-    case: 's3',
-    value: new S3Upload({
-      accessKey: process.env.MINIO_ACCESS_KEY,
-      secret: process.env.MINIO_SECRET_KEY,
-      region: process.env.MINIO_REGION || 'us-east-1',
-      bucket: RECORDING_BUCKET_NAME,
-      endpoint: minioEndpointUrl,
-      forcePathStyle: true,
-    }),
-  },
-});
+    fileType: EncodedFileType.MP4,
+    filepath: filePath,
+    output: {
+      case: 's3',
+      value: new S3Upload({
+        accessKey: process.env.MINIO_ACCESS_KEY,
+        secret: process.env.MINIO_SECRET_KEY,
+        region: process.env.MINIO_REGION || 'us-east-1',
+        bucket: RECORDING_BUCKET_NAME,
+        endpoint: minioEndpointUrl,
+        forcePathStyle: true,
+      }),
+    },
+  });
 
   const options = {
     layout: 'speaker',
@@ -65,7 +72,7 @@ async function startRecording(sessionId, startedByUserId) {
 
   const egressInfo = await egressClient.startRoomCompositeEgress(
     session.livekit_room_id,
-    { file: fileOutput }, 
+    { file: fileOutput },
     options
   );
 
