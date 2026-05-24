@@ -72,7 +72,7 @@ async function startRecording(sessionId, startedByUserId) {
 
   const egressInfo = await egressClient.startRoomCompositeEgress(
     session.livekit_room_id,
-    { file: fileOutput },
+    { fileOutputs: [fileOutput] },
     options
   );
 
@@ -84,10 +84,10 @@ async function startRecording(sessionId, startedByUserId) {
   }
 
   const insertResult = await pool.query(
-    `INSERT INTO session_recordings (session_id, egress_id, status, started_by)
-     VALUES ($1, $2, 'recording', $3)
+    `INSERT INTO session_recordings (session_id, class_id, egress_id, status, started_by)
+     VALUES ($1, $2, $3, 'recording', $4)
      RETURNING id, egress_id, started_at`,
-    [sessionId, egressId, startedByUserId]
+    [sessionId, session.class_id, egressId, startedByUserId]
   );
 
   return insertResult.rows[0];
@@ -117,18 +117,19 @@ async function stopRecording(sessionId, egressId) {
   return { egress_id: egressId, status: 'stopping' };
 }
 
-async function listRecordings(sessionId) {
+async function listRecordings(classId) {
   const result = await pool.query(
     `SELECT id,
+            session_id,
             egress_id,
             s3_key,
             duration_seconds,
             started_at,
             ended_at
      FROM session_recordings
-     WHERE session_id = $1 AND status = 'completed'
+     WHERE class_id = $1 AND status = 'completed'
      ORDER BY started_at DESC, id DESC`,
-    [sessionId]
+    [classId]
   );
 
   const recordings = await Promise.all(
@@ -143,6 +144,7 @@ async function listRecordings(sessionId) {
 
       return {
         id: row.id,
+        session_id: row.session_id,
         egress_id: row.egress_id,
         duration_seconds: row.duration_seconds,
         started_at: row.started_at,

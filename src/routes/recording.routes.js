@@ -1,6 +1,6 @@
 const express = require('express');
 const { authenticateToken, authorizeRoles } = require('../middleware/auth.middleware');
-const { validateSessionIdParam } = require('../middleware/validate.middleware');
+const { validateClassIdParam, validateSessionIdParam } = require('../middleware/validate.middleware');
 const recordingController = require('../controllers/recording.controller');
 
 const router = express.Router();
@@ -22,9 +22,9 @@ router.post(
 );
 
 router.get(
-  '/sessions/:sessionId/recordings',
+  '/classes/:classId/recordings',
   authorizeRoles('teacher', 'student'),
-  validateSessionIdParam,
+  validateClassIdParam,
   recordingController.listRecordings
 );
 

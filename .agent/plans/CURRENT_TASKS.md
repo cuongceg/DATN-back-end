@@ -188,15 +188,16 @@ webhook:
   - `404` — egressId không tồn tại hoặc không thuộc session
   - `403` — Không phải teacher owner
 
-#### `GET /api/sessions/:sessionId/recordings`
+#### `GET /api/classes/:classId/recordings`
 - Auth: Bearer token, teacher owner hoặc student member của class
-- Gọi `recordingService.listRecordings(sessionId)`
+- Gọi `recordingService.listRecordings(classId)`
 - Response `200`:
 ```json
 {
   "recordings": [
     {
       "id": "uuid",
+      "session_id": "uuid",
       "egress_id": "EG_xxx",
       "duration_seconds": 3600,
       "started_at": "2026-05-22T10:00:00.000Z",

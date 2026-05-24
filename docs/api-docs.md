@@ -1403,9 +1403,9 @@ Stop recording theo `egress_id`.
 	- `403` không phải teacher owner
 	- `404` egressId không tồn tại hoặc không thuộc session
 
-#### GET `/api/sessions/:sessionId/recordings`
+#### GET `/api/classes/:classId/recordings`
 
-Danh sách recordings đã `completed` cho session (kèm presigned URL từ MinIO, TTL 4 giờ).
+Danh sách recordings đã `completed` cho class (kèm presigned URL từ MinIO, TTL 4 giờ).
 
 - Auth: Bắt buộc token
 - Roles: teacher owner hoặc student member
@@ -1418,6 +1418,7 @@ Danh sách recordings đã `completed` cho session (kèm presigned URL từ MinI
 	"recordings": [
 		{
 			"id": "uuid",
+			"session_id": "uuid",
 			"egress_id": "EG_xxx",
 			"duration_seconds": 3600,
 			"started_at": "2026-05-22T10:00:00.000Z",
@@ -1430,8 +1431,8 @@ Danh sách recordings đã `completed` cho session (kèm presigned URL từ MinI
 ```
 
 - Error:
-	- `403` không có quyền truy cập session
-	- `404` session không tồn tại
+	- `403` không có quyền truy cập class
+	- `404` class không tồn tại
 
 ## 5) Error chung
 

@@ -53,11 +53,11 @@ async function stopRecording(req, res, next) {
 }
 
 async function listRecordings(req, res, next) {
-  const { sessionId } = req.params;
+  const { classId } = req.params;
 
   try {
-    await sessionService.verifyUserCanAccessSession(req.user, sessionId);
-    const recordings = await recordingService.listRecordings(sessionId);
+    await sessionService.verifyUserCanAccessClass(req.user, classId);
+    const recordings = await recordingService.listRecordings(classId);
     return res.status(200).json({ recordings });
   } catch (error) {
     return handleServiceError(res, error, next);

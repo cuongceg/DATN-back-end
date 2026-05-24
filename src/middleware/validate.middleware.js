@@ -51,6 +51,16 @@ function validateSessionIdParam(req, res, next) {
   return next();
 }
 
+function validateClassIdParam(req, res, next) {
+  const { classId } = req.params;
+
+  if (!isUuid(classId)) {
+    return res.status(400).json({ message: 'classId must be a valid UUID.' });
+  }
+
+  return next();
+}
+
 function validateSendMessage(req, res, next) {
   const { content } = req.body;
 
@@ -63,6 +73,7 @@ function validateSendMessage(req, res, next) {
 
 module.exports = {
   validateCreateSession,
+  validateClassIdParam,
   validateSessionIdParam,
   validateSendMessage,
 };

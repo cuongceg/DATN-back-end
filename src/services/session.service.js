@@ -196,6 +196,46 @@ async function verifyUserCanAccessSession(user, sessionId) {
   return { session, role: 'student' };
 }
 
+async function verifyUserCanAccessClass(user, classId) {
+  const classResult = await pool.query(
+    `SELECT c.id, c.teacher_id
+     FROM classes c
+     WHERE c.id = $1`,
+    [classId]
+  );
+
+  if (classResult.rows.length === 0) {
+    const error = new Error('Class not found.');
+    error.status = 404;
+    throw error;
+  }
+
+  const classRow = classResult.rows[0];
+
+  if (user.role === 'admin') {
+    return { role: 'admin' };
+  }
+
+  if (classRow.teacher_id === user.id) {
+    return { role: 'teacher' };
+  }
+
+  const memberResult = await pool.query(
+    `SELECT 1
+     FROM class_members
+     WHERE class_id = $1 AND student_id = $2`,
+    [classId, user.id]
+  );
+
+  if (memberResult.rows.length === 0) {
+    const error = new Error('You are not a member of this class.');
+    error.status = 403;
+    throw error;
+  }
+
+  return { role: 'student' };
+}
+
 async function updateSession(sessionId, teacherId, { title, scheduledAt, scheduledEndAt }) {
   const sessionResult = await pool.query(
     `SELECT s.id, s.status, c.teacher_id
@@ -332,6 +372,7 @@ module.exports = {
   startSession,
   endSession,
   verifyUserCanJoin,
+  verifyUserCanAccessClass,
   verifyUserCanAccessSession,
   updateSession,
   deleteSession,
