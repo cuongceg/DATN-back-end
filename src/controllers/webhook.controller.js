@@ -15,15 +15,15 @@ function toDurationSeconds(durationNs) {
 }
 
 async function handleLiveKitWebhook(req, res, next) {
-  const signature = req.headers['livekit-signature'];
+  const authHeader = req.headers['authorization'];
 
-  if (!signature) {
-    return res.status(400).json({ message: 'livekit-signature header is required.' });
+  if (!authHeader) {
+    return res.status(400).json({ message: 'Authorization header is required.' });
   }
 
   try {
     const rawBody = req.body;
-    const event = await receiver.receive(rawBody, signature);
+    const event = await receiver.receive(rawBody, authHeader);
 
     if (event?.event === 'egress_ended') {
       const info = event.egressInfo || {};

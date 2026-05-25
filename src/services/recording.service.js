@@ -38,7 +38,7 @@ async function startRecording(sessionId, startedByUserId) {
     throw createHttpError(409, 'A recording is already in progress.');
   }
 
-  const minioHost = process.env.MINIO_ENDPOINT_RECORDING || 'localhost';
+  const minioHost = process.env.MINIO_ENDPOINT || 'localhost';
   const minioPort = Number(process.env.MINIO_PORT || 9000);
   const minioUseSsl = String(process.env.MINIO_USE_SSL || 'false').toLowerCase() === 'true';
   const minioEndpointUrl = `${minioUseSsl ? 'https' : 'http'}://${minioHost}:${minioPort}`;
@@ -52,7 +52,9 @@ async function startRecording(sessionId, startedByUserId) {
   const dd = String(now.getDate()).padStart(2, '0');
   const mm = String(now.getMonth() + 1).padStart(2, '0');
   const yyyy = String(now.getFullYear());
-  const datePath = `${dd}/${mm}/${yyyy}`;
+  const hh = String(now.getHours()).padStart(2, '0');
+  const min = String(now.getMinutes()).padStart(2, '0');
+  const datePath = `${dd}-${mm}-${yyyy}-${hh}-${min}`;
 
   const filePath = `recordings/${classId}/${sessionTitle}-recording-${datePath}.mp4`;
 
