@@ -9,6 +9,7 @@ const postsRoutes = require('./routes/posts.routes');
 const filesRoutes = require('./routes/files.routes');
 const webhookRoutes = require('./routes/webhook.routes');
 const recordingRoutes = require('./routes/recording.routes');
+const reactionRoutes = require('./routes/reaction.routes');
 const suggestionRoutes = require('./routes/suggestions');
 const { buildIndex } = require('./suggestion/loader');
 
@@ -34,6 +35,7 @@ app.use('/api/sessions', sessionRoutes);
 app.use('/api/posts', postsRoutes);
 app.use('/api/files', filesRoutes);
 app.use('/api', recordingRoutes);
+app.use('/api', reactionRoutes);
 app.use('/api', suggestionRoutes);
 
 app.use((req, res) => {

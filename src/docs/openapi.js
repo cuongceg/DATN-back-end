@@ -16,6 +16,7 @@ const openapiSpec = {
     { name: 'Users' },
     { name: 'Classes' },
     { name: 'Sessions' },
+    { name: 'Reactions' },
     { name: 'Posts' },
     { name: 'Files' },
     { name: 'Suggestions' },
@@ -375,6 +376,53 @@ const openapiSpec = {
             items: { $ref: '#/components/schemas/SuggestionQuestion' },
           },
           latency_ms: { type: 'number', example: 2.1 },
+        },
+      },
+
+      Reaction: {
+        type: 'object',
+        required: ['session_id', 'user_id', 'type', 'raised_at'],
+        properties: {
+          session_id: { type: 'string', format: 'uuid' },
+          user_id: { type: 'string', format: 'uuid' },
+          type: {
+            type: 'string',
+            enum: ['raise_hand', 'agree', 'repeat', 'pause', 'confused'],
+          },
+          raised_at: { type: 'string', format: 'date-time' },
+        },
+      },
+      ReactionWithUser: {
+        allOf: [
+          { $ref: '#/components/schemas/Reaction' },
+          {
+            type: 'object',
+            required: ['full_name'],
+            properties: {
+              full_name: { type: 'string' },
+            },
+          },
+        ],
+      },
+      SetReactionBody: {
+        type: 'object',
+        required: ['type'],
+        properties: {
+          type: {
+            type: 'string',
+            enum: ['raise_hand', 'agree', 'repeat', 'pause', 'confused'],
+          },
+        },
+      },
+      ListReactionsResponse: {
+        type: 'object',
+        required: ['reactions', 'raise_hand_count'],
+        properties: {
+          reactions: {
+            type: 'array',
+            items: { $ref: '#/components/schemas/ReactionWithUser' },
+          },
+          raise_hand_count: { type: 'integer', minimum: 0 },
         },
       },
     },
@@ -1776,6 +1824,143 @@ const openapiSpec = {
                     message_data: { $ref: '#/components/schemas/Message' },
                   },
                 },
+              },
+            },
+          },
+          400: {
+            description: 'Validation error',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          401: {
+            description: 'Unauthorized',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          403: {
+            description: 'Forbidden',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          404: {
+            description: 'Session not found',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+        },
+      },
+    },
+    '/api/sessions/{sessionId}/reactions': {
+      post: {
+        tags: ['Reactions'],
+        summary: 'Set or update reaction for current user (session must be ongoing)',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            in: 'path',
+            name: 'sessionId',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/SetReactionBody' },
+            },
+          },
+        },
+        responses: {
+          201: {
+            description: 'Reaction upserted',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    reaction: { $ref: '#/components/schemas/Reaction' },
+                  },
+                },
+              },
+            },
+          },
+          400: {
+            description: 'Validation error or session not ongoing',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          401: {
+            description: 'Unauthorized',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          403: {
+            description: 'Forbidden',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          404: {
+            description: 'Session not found',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+        },
+      },
+      delete: {
+        tags: ['Reactions'],
+        summary: 'Clear reaction for current user (idempotent)',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            in: 'path',
+            name: 'sessionId',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          200: {
+            description: 'Reaction cleared',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    message: { type: 'string', example: 'Reaction cleared.' },
+                  },
+                },
+              },
+            },
+          },
+          400: {
+            description: 'Validation error',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          401: {
+            description: 'Unauthorized',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          403: {
+            description: 'Forbidden',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          404: {
+            description: 'Session not found',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+        },
+      },
+      get: {
+        tags: ['Reactions'],
+        summary: 'List reactions in session (teacher only)',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            in: 'path',
+            name: 'sessionId',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          200: {
+            description: 'Reactions list',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ListReactionsResponse' },
               },
             },
           },

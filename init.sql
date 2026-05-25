@@ -153,6 +153,27 @@ CREATE TABLE IF NOT EXISTS session_artifacts (
         ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS session_recordings (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    session_id UUID NOT NULL,
+    class_id UUID NOT NULL,
+    egress_id TEXT NOT NULL UNIQUE,
+    status TEXT NOT NULL DEFAULT 'recording',
+    s3_key TEXT,
+    duration_seconds INT,
+    started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    ended_at TIMESTAMPTZ,
+    started_by UUID,
+    CONSTRAINT fk_session_recordings_session
+        FOREIGN KEY (session_id)
+        REFERENCES sessions(id)
+        ON DELETE CASCADE,
+    CONSTRAINT fk_session_recordings_class
+        FOREIGN KEY (class_id)
+        REFERENCES classes(id)
+        ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS folders (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     class_id UUID NOT NULL,
@@ -191,9 +212,25 @@ CREATE INDEX IF NOT EXISTS idx_session_participants_user_id ON session_participa
 CREATE INDEX IF NOT EXISTS idx_messages_session_id ON messages(session_id);
 CREATE INDEX IF NOT EXISTS idx_messages_sender_id ON messages(sender_id);
 CREATE INDEX IF NOT EXISTS idx_session_artifacts_session_id ON session_artifacts(session_id);
+CREATE INDEX IF NOT EXISTS idx_session_recordings_session_id ON session_recordings(session_id);
+CREATE INDEX IF NOT EXISTS idx_session_recordings_class_id ON session_recordings(class_id);
+CREATE INDEX IF NOT EXISTS idx_session_recordings_class_id_started_at ON session_recordings(class_id, started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_posts_class_id ON posts(class_id);
 CREATE INDEX IF NOT EXISTS idx_posts_author_id ON posts(author_id);
 CREATE INDEX IF NOT EXISTS idx_posts_session_id ON posts(session_id);
 CREATE INDEX IF NOT EXISTS idx_folders_class_parent_id ON folders(class_id, parent_id);
 CREATE INDEX IF NOT EXISTS idx_folders_class_path ON folders(class_id, path);
 CREATE INDEX IF NOT EXISTS idx_class_files_class_path ON class_files(class_id, path);
+
+CREATE TABLE IF NOT EXISTS session_reactions (
+    session_id  UUID NOT NULL,
+    user_id     UUID NOT NULL,
+    type        VARCHAR(20) NOT NULL,
+    raised_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (session_id, user_id),
+    CONSTRAINT fk_sr_session FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE,
+    CONSTRAINT fk_sr_user    FOREIGN KEY (user_id)    REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT chk_sr_type   CHECK (type IN ('raise_hand','agree','repeat','pause','confused'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_session_reactions_session_id ON session_reactions(session_id);

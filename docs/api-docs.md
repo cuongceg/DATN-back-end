@@ -1468,6 +1468,110 @@ Gợi ý câu hỏi (Fuse.js search, in-process).
 	- `401 { "message": "Authorization token is required." }`
 	- `401 { "message": "Invalid or expired token." }`
 
+	---
+
+	### 4.9 Reactions
+
+	Reactions dùng để lưu trạng thái reaction hiện tại của mỗi participant trong 1 session.
+
+	- Mỗi user trong session chỉ có tối đa 1 reaction active tại một thời điểm.
+	- Allowed types: `raise_hand | agree | repeat | pause | confused`
+
+	#### POST `/api/sessions/:sessionId/reactions`
+
+	Set/update reaction của user hiện tại trong session (session phải đang `ongoing`).
+
+	- Auth: Bắt buộc token
+	- Roles: teacher của session hoặc participant của session
+	- Path params:
+		- `sessionId`: UUID
+	- Body:
+
+	```json
+	{ "type": "raise_hand" }
+	```
+
+	- Success:
+		- `201`
+
+	```json
+	{
+		"reaction": {
+			"session_id": "uuid",
+			"user_id": "uuid",
+			"type": "raise_hand",
+			"raised_at": "2026-05-25T10:00:00.000Z"
+		}
+	}
+	```
+
+	- Error:
+		- `400 { "message": "sessionId must be a valid UUID." }`
+		- `400 { "message": "type must be one of: raise_hand, agree, repeat, pause, confused." }`
+		- `400 { "message": "Session is not ongoing." }`
+		- `401 { "message": "Authorization token is required." }`
+		- `401 { "message": "Invalid or expired token." }`
+		- `403 { "message": "You do not have permission to access this session." }`
+		- `404 { "message": "Session not found." }`
+
+	#### DELETE `/api/sessions/:sessionId/reactions`
+
+	Clear reaction hiện tại của user trong session (idempotent).
+
+	- Auth: Bắt buộc token
+	- Roles: teacher của session hoặc participant của session
+	- Path params:
+		- `sessionId`: UUID
+
+	- Success:
+		- `200`
+
+	```json
+	{ "message": "Reaction cleared." }
+	```
+
+	- Error:
+		- `400 { "message": "sessionId must be a valid UUID." }`
+		- `401 { "message": "Authorization token is required." }`
+		- `401 { "message": "Invalid or expired token." }`
+		- `403 { "message": "You do not have permission to access this session." }`
+		- `404 { "message": "Session not found." }`
+
+	#### GET `/api/sessions/:sessionId/reactions`
+
+	List reactions hiện tại trong session.
+
+	- Auth: Bắt buộc token
+	- Roles: `teacher`
+	- Path params:
+		- `sessionId`: UUID
+
+	- Success:
+		- `200`
+
+	```json
+	{
+		"reactions": [
+			{
+				"session_id": "uuid",
+				"user_id": "uuid",
+				"type": "raise_hand",
+				"raised_at": "2026-05-25T10:00:00.000Z",
+				"full_name": "Nguyen Van A"
+			}
+		],
+		"raise_hand_count": 1
+	}
+	```
+
+	- Error:
+		- `400 { "message": "sessionId must be a valid UUID." }`
+		- `401 { "message": "Authorization token is required." }`
+		- `401 { "message": "Invalid or expired token." }`
+		- `403 { "message": "Only teachers can list reactions." }`
+		- `403 { "message": "You do not have permission to access this session." }`
+		- `404 { "message": "Session not found." }`
+
 ## 5) Error chung
 
 - Endpoint không tồn tại:
