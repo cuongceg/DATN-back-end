@@ -18,6 +18,7 @@ const openapiSpec = {
     { name: 'Sessions' },
     { name: 'Posts' },
     { name: 'Files' },
+    { name: 'Suggestions' },
   ],
   components: {
     securitySchemes: {
@@ -351,6 +352,31 @@ const openapiSpec = {
           expires_in_seconds: { type: 'integer', example: 3600 },
         },
       },
+
+      SuggestionQuestion: {
+        type: 'object',
+        required: ['id', 'q', 'topic'],
+        properties: {
+          id: { type: 'string', example: '0001' },
+          q: { type: 'string', example: 'IP là gì?' },
+          topic: {
+            type: 'string',
+            enum: ['ip', 'ipv4', 'classful', 'cidr', 'subnet', 'ipv6'],
+            example: 'ip',
+          },
+        },
+      },
+      SuggestionsResponse: {
+        type: 'object',
+        required: ['results', 'latency_ms'],
+        properties: {
+          results: {
+            type: 'array',
+            items: { $ref: '#/components/schemas/SuggestionQuestion' },
+          },
+          latency_ms: { type: 'number', example: 2.1 },
+        },
+      },
     },
   },
   paths: {
@@ -507,6 +533,58 @@ const openapiSpec = {
           },
           400: {
             description: 'query missing',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          401: {
+            description: 'Unauthorized',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+        },
+      },
+    },
+
+    '/api/suggestions': {
+      get: {
+        tags: ['Suggestions'],
+        summary: 'Search suggestion questions (Fuse.js)',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            in: 'query',
+            name: 'q',
+            required: true,
+            schema: { type: 'string', minLength: 2 },
+            description: 'Query text (min length 2 after trim)',
+          },
+          {
+            in: 'query',
+            name: 'topic',
+            required: false,
+            schema: {
+              type: 'string',
+              enum: ['ip', 'ipv4', 'classful', 'cidr', 'subnet', 'ipv6'],
+            },
+            description: 'Optional topic filter. Invalid/missing topic is ignored.',
+          },
+          {
+            in: 'query',
+            name: 'limit',
+            required: false,
+            schema: { type: 'integer', default: 5, maximum: 10, minimum: 1 },
+            description: 'Number of results (default 5, max 10)',
+          },
+        ],
+        responses: {
+          200: {
+            description: 'Suggestions response',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/SuggestionsResponse' },
+              },
+            },
+          },
+          400: {
+            description: 'Validation error',
             content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
           },
           401: {

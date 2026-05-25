@@ -1434,6 +1434,40 @@ Danh sách recordings đã `completed` cho class (kèm presigned URL từ MinIO,
 	- `403` không có quyền truy cập class
 	- `404` class không tồn tại
 
+---
+
+### 4.8 Suggestions
+
+#### GET `/api/suggestions?q=<text>&topic=<topic>&limit=5`
+
+Gợi ý câu hỏi (Fuse.js search, in-process).
+
+- Auth: Bắt buộc token
+- Roles: tất cả role đã đăng nhập
+- Query params:
+	- `q` (required): string, sau trim phải có length >= 2
+	- `topic` (optional): nếu hợp lệ thì filter theo topic, nếu không hợp lệ/không có thì bỏ qua
+		- Allowed: `ip | ipv4 | classful | cidr | subnet | ipv6`
+	- `limit` (optional): default 5, max 10
+
+- Success:
+	- `200`
+
+```json
+{
+	"results": [
+		{ "id": "0001", "q": "IP là gì?", "topic": "ip" }
+	],
+	"latency_ms": 2.1
+}
+```
+
+- Error:
+	- `400 { "message": "q is required." }`
+	- `400 { "message": "q must be at least 2 characters." }`
+	- `401 { "message": "Authorization token is required." }`
+	- `401 { "message": "Invalid or expired token." }`
+
 ## 5) Error chung
 
 - Endpoint không tồn tại:
