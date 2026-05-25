@@ -1,314 +1,214 @@
-# SKILLS.md — Kỹ năng & Patterns cho Meeting Feature
+# BACKEND_SKILLS.md
 
-> Dựa trên schema thực tế từ `init.sql`
+Quy ước kỹ thuật cho Express.js backend.
+Đọc file này trước khi viết code mới hoặc review PR.
 
 ---
 
-## 1. LiveKit Token Generation
+## 1. Tổng quan kiến trúc
 
-### Cài đặt
-```bash
-npm install livekit-server-sdk
+```
+Flutter Desktop (Linux / Windows)
+        │  HTTP REST (Bearer JWT)
+        ▼
+Express.js API  ──► PostgreSQL (pgcrypto, UUID)
+        │
+        ├──► MinIO  (file storage, presigned URLs)
+        └──► Fuse.js suggestion (in-process, 1 file JSON)
 ```
 
-### Config (`src/config/livekit.js`)
-```js
-import { RoomServiceClient } from 'livekit-server-sdk';
+**Nguyên tắc chung:**
+- Mọi endpoint đều yêu cầu `Authorization: Bearer <jwt>` trừ `/api/auth/*`.
+- Error response luôn có dạng `{ "message": "..." }`.
+- UUID dùng `gen_random_uuid()` từ `pgcrypto` — không tự sinh ở app layer.
+- Không bao giờ trả stack trace ra client trong production.
 
-export const roomService = new RoomServiceClient(
-  process.env.LIVEKIT_URL,
-  process.env.LIVEKIT_API_KEY,
-  process.env.LIVEKIT_API_SECRET
-);
+---
+
+## 2. Cấu trúc thư mục
+
 ```
-
-### Tạo Token (`src/services/livekit.service.js`)
-```js
-import { AccessToken } from 'livekit-server-sdk';
-
-/**
- * Tạo JWT token để client kết nối vào LiveKit room
- * @param {string} roomName  - livekit_room_id trong bảng sessions
- * @param {string} identity  - user UUID từ bảng users
- * @param {object} grants    - quyền trong room
- */
-export const generateLiveKitToken = async (roomName, identity, grants = {}) => {
-  const token = new AccessToken(
-    process.env.LIVEKIT_API_KEY,
-    process.env.LIVEKIT_API_SECRET,
-    {
-      identity: String(identity),
-      ttl: '4h',
-    }
-  );
-
-  token.addGrant({
-    roomJoin: true,
-    room: roomName,
-    canPublish: grants.canPublish ?? true,
-    canSubscribe: grants.canSubscribe ?? true,
-    canPublishData: grants.canPublishData ?? true, // dùng cho caption/subtitle
-    roomAdmin: grants.roomAdmin ?? false,
-    ...grants,
-  });
-
-  return token.toJwt();
-};
-```
-
-### Phân quyền theo role
-```js
-// Teacher — kiểm tra qua classes.teacher_id
-const teacherGrants = {
-  canPublish: true,
-  canSubscribe: true,
-  canPublishData: true,
-  roomAdmin: true,  // mute/kick participants
-};
-
-// Student — kiểm tra qua class_members (permission: 'Member' | 'Owner')
-const studentGrants = {
-  canPublish: true,
-  canSubscribe: true,
-  canPublishData: true,
-  roomAdmin: false,
-};
+src/
+├── config/           # db.js, minio.js, env validation
+├── middleware/        # auth.js, role.js
+├── routes/           # một file per resource
+├── controllers/      # business logic, gọi services
+├── services/         # truy vấn DB, MinIO operations
+├── data/
+│   └── questions.json  # toàn bộ ngân hàng câu hỏi — 1 file duy nhất
+└── suggestion/
+    ├── loader.js     # load + build Fuse instance khi server khởi động
+    └── search.js     # hàm search(query, topic, limit)
 ```
 
 ---
 
-## 2. Schema thực tế (tham chiếu từ init.sql)
+## 3. Auth & Role middleware
 
-### Enum types đã có
-```sql
-session_status:          'scheduled' | 'ongoing' | 'completed'
-user_role:               'admin' | 'teacher' | 'student'
-class_member_permission: 'Member' | 'Owner'
-artifact_status:         'processing' | 'failed' | 'completed'
-```
+```js
+// middleware/auth.js
+// Gắn req.user = { id, role, full_name, email } sau khi verify JWT
+// Dùng: router.get('/...', authenticate, handler)
 
-### Bảng `sessions` — đây là "meeting" trong dự án này
-```sql
-sessions (
-  id               UUID PK
-  class_id         UUID → classes(id)
-  livekit_room_id  VARCHAR(255)   -- tên room trên LiveKit server
-  title            VARCHAR(255)
-  start_time       TIMESTAMPTZ    -- lúc bắt đầu thực tế (status → ongoing)
-  end_time         TIMESTAMPTZ    -- lúc kết thúc (status → completed)
-  status           session_status -- 'scheduled' | 'ongoing' | 'completed'
-)
-```
-> ⚠️ `livekit_room_id` NULL khi mới tạo (scheduled). Nên gán `livekit_room_id = session.id::text` lúc start cho đơn giản và đảm bảo unique.
-
-### Bảng `class_members` — verify quyền join session
-```sql
-class_members (
-  class_id    UUID → classes(id)
-  student_id  UUID → users(id)
-  permission  class_member_permission  -- 'Member' | 'Owner'
-  joined_at   TIMESTAMPTZ
-)
-```
-> ⚠️ Teacher **không** có trong `class_members`. Kiểm tra teacher qua `classes.teacher_id`.
-
-### Bảng `messages` — chat trong session (đã có sẵn)
-```sql
-messages (
-  id          UUID PK
-  session_id  UUID → sessions(id)
-  sender_id   UUID → users(id)
-  content     TEXT
-  timestamp   TIMESTAMPTZ
-)
-```
-
-### Bảng `session_artifacts` — recording & AI summary (đã có sẵn)
-```sql
-session_artifacts (
-  id                    UUID PK
-  session_id            UUID → sessions(id)
-  video_file_path       VARCHAR(500)
-  transcript_file_path  VARCHAR(500)
-  ai_summary_content    JSONB
-  status                artifact_status  -- 'processing' | 'failed' | 'completed'
-)
+// middleware/role.js
+// requireRole('teacher') — trả 403 nếu không đúng role
+// Dùng: router.post('/...', authenticate, requireRole('teacher'), handler)
 ```
 
 ---
 
-## 3. Query Patterns
+## 4. Response conventions
 
-### Kiểm tra user có quyền join session không
+| Tình huống | HTTP code |
+|---|---|
+| Tạo thành công | 201 |
+| Thao tác thành công | 200 |
+| Validation lỗi | 400 |
+| Sai / hết hạn token | 401 |
+| Sai role hoặc không sở hữu resource | 403 |
+| Không tìm thấy | 404 |
+| Conflict (đã tồn tại) | 409 |
+| File quá lớn | 413 |
+| Lỗi server chưa xử lý | 500 |
+
+---
+
+## 5. PostgreSQL
+
+- Dùng `pg` (node-postgres) với pool, không dùng ORM.
+- Parameterized query bắt buộc: `query('SELECT ... WHERE id = $1', [id])`.
+- Transaction: dùng `client.query('BEGIN') … COMMIT / ROLLBACK` khi có nhiều bước ghi.
+- UUID input từ client phải validate format trước khi truyền vào query (`uuid` package hoặc regex).
+
+---
+
+## 6. MinIO
+
+- Bucket `class-files`: tài liệu lớp học.
+- Bucket `session-recordings`: video recording.
+- Presigned URL TTL: 1 giờ cho files, 4 giờ cho recordings.
+- Object key format: `<classId>/<path>` (files), `<sessionId>/<egressId>.mp4` (recordings).
+- Không expose internal MinIO URL ra client — luôn qua presigned URL.
+
+---
+
+## 7. Suggestion / Question Bank
+
+### 7.1 Lưu câu hỏi — 1 file JSON duy nhất
+
+Dataset 3000+ câu → 1 file `src/data/questions.json`, không tách theo topic.
+
+**Lý do dùng 1 file:**
+- Fuse.js search 3000 câu < 5ms — không cần tách để tối ưu tốc độ.
+- Filter theo `topic` làm ở tầng kết quả sau khi search, hoặc dùng `keys: ['q']` + filter kết quả.
+- Tách nhiều file chỉ có lợi khi dataset > 50k câu hoặc cần maintain riêng theo người — không phải trường hợp này.
+
+**Schema mỗi phần tử:**
+```json
+{ "id": "0001", "q": "IP là gì và vai trò của nó?", "topic": "ip" }
+```
+
+**Convention ID:** chuỗi số 4 chữ số tăng dần, unique toàn file — ví dụ `"0001"`, `"0042"`, `"3000"`.
+
+**Lý do dùng file JSON thay vì DB:**
+- 3000 câu × ~100 bytes ≈ 300KB RAM sau khi index — t3.micro chịu tốt.
+- Cập nhật nội dung chỉ cần sửa file + restart, không cần migration DB.
+- Tradeoff chấp nhận được ở MVP: thêm câu cần restart server; không hỗ trợ CRUD qua API.
+
+### 7.2 Fuse.js loader — build index 1 lần khi server khởi động
+
 ```js
-export const verifyUserCanJoin = async (userId, sessionId) => {
-  const sessionRes = await db.query(
-    `SELECT s.id, s.class_id, s.status, s.livekit_room_id,
-            c.teacher_id
-     FROM sessions s
-     JOIN classes c ON c.id = s.class_id
-     WHERE s.id = $1`,
-    [sessionId]
-  );
+// suggestion/loader.js
+const Fuse = require('fuse.js');
+const fs   = require('fs');
+const path = require('path');
 
-  const session = sessionRes.rows[0];
-  if (!session) throw new Error('Session không tồn tại');
-  if (session.status === 'completed') throw new Error('Session đã kết thúc');
+const FUSE_OPTIONS = {
+  keys: ['q'],
+  threshold: 0.4,
+  minMatchCharLength: 2,
+  includeScore: true,
+  shouldSort: true,
+};
 
-  // Teacher của lớp
-  if (session.teacher_id === userId) {
-    return { session, role: 'teacher' };
+let _index = null;
+let _items = [];
+
+function buildIndex() {
+  const filePath = path.join(__dirname, '../data/questions.json');
+  if (!fs.existsSync(filePath)) {
+    console.warn('[suggestion] questions.json not found — suggestion disabled.');
+    return;
+  }
+  _items = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  _index = new Fuse(_items, FUSE_OPTIONS);
+  console.log(`[suggestion] index built: ${_items.length} questions`);
+}
+
+function getIndex() {
+  return _index;
+}
+
+module.exports = { buildIndex, getIndex };
+```
+
+```js
+// app.js — gọi trước app.listen()
+const { buildIndex } = require('./suggestion/loader');
+buildIndex();
+```
+
+### 7.3 search.js
+
+```js
+// suggestion/search.js
+const { getIndex } = require('./loader');
+
+function search(query, topic, limit = 5) {
+  const index = getIndex();
+  if (!index) return [];
+
+  const safeLimit = Math.min(limit, 10);
+  let results = index.search(query, { limit: safeLimit * 3 });
+
+  if (topic) {
+    results = results.filter(r => r.item.topic === topic);
   }
 
-  // Student trong class_members
-  const memberRes = await db.query(
-    `SELECT permission FROM class_members
-     WHERE class_id = $1 AND student_id = $2`,
-    [session.class_id, userId]
-  );
+  return results.slice(0, safeLimit).map(r => r.item);
+}
 
-  if (!memberRes.rows[0]) throw new Error('Bạn không thuộc lớp học này');
-  return { session, role: 'student', permission: memberRes.rows[0].permission };
-};
+module.exports = { search };
 ```
 
-### Tạo session mới
-```js
-export const createSession = async (classId, teacherId, { title, scheduledAt }) => {
-  const classRes = await db.query(
-    `SELECT id FROM classes WHERE id = $1 AND teacher_id = $2`,
-    [classId, teacherId]
-  );
-  if (!classRes.rows[0]) throw new Error('Không có quyền tạo session cho lớp này');
+### 7.4 Endpoint spec
 
-  const result = await db.query(
-    `INSERT INTO sessions (class_id, title, start_time, status)
-     VALUES ($1, $2, $3, 'scheduled')
-     RETURNING *`,
-    [classId, title, scheduledAt || null]
-  );
-  return result.rows[0];
-};
+```
+GET /api/suggestions?q=<text>&topic=<topic>&limit=5
+Authorization: Bearer <jwt>
 ```
 
-### Start session (scheduled → ongoing)
-```js
-export const startSession = async (sessionId, teacherId) => {
-  // Gán livekit_room_id = session UUID lúc start
-  const result = await db.query(
-    `UPDATE sessions
-     SET status = 'ongoing',
-         start_time = NOW(),
-         livekit_room_id = id::text
-     WHERE id = $1
-       AND class_id IN (SELECT id FROM classes WHERE teacher_id = $2)
-       AND status = 'scheduled'
-     RETURNING *`,
-    [sessionId, teacherId]
-  );
-  if (!result.rows[0]) throw new Error('Không thể start session');
-  return result.rows[0];
-};
-```
+- `q`: bắt buộc, >= 2 ký tự.
+- `topic`: optional — nếu có thì filter sau khi search, nếu không thì trả toàn bộ top kết quả.
+- `limit`: default 5, max 10.
 
-### End session (ongoing → completed)
-```js
-export const endSession = async (sessionId, teacherId) => {
-  const result = await db.query(
-    `UPDATE sessions
-     SET status = 'completed', end_time = NOW()
-     WHERE id = $1
-       AND class_id IN (SELECT id FROM classes WHERE teacher_id = $2)
-       AND status = 'ongoing'
-     RETURNING *`,
-    [sessionId, teacherId]
-  );
-  if (!result.rows[0]) throw new Error('Không thể end session');
-  return result.rows[0];
-};
+Response:
+```json
+{
+  "results": [
+    { "id": "0001", "q": "IP là gì và vai trò của nó?", "topic": "ip" }
+  ],
+  "latency_ms": 2
+}
 ```
 
 ---
 
-## 4. API Endpoints Pattern
+## 8. Những gì KHÔNG làm ở MVP
 
-### Routes (`src/routes/session.routes.js`)
-```js
-import { Router } from 'express';
-import { authMiddleware } from '../middleware/auth.middleware.js';
-import * as sessionController from '../controllers/session.controller.js';
-
-const router = Router();
-router.use(authMiddleware);
-
-// Session CRUD
-router.post('/',                  sessionController.createSession);
-router.get('/class/:classId',     sessionController.getSessionsByClass);
-router.get('/:sessionId',         sessionController.getSessionById);
-router.patch('/:sessionId/start', sessionController.startSession);
-router.patch('/:sessionId/end',   sessionController.endSession);
-
-// LiveKit token — Flutter dùng để connect vào room
-router.post('/:sessionId/token',  sessionController.joinSession);
-
-// Messages (đã có bảng sẵn)
-router.get('/:sessionId/messages',  sessionController.getMessages);
-router.post('/:sessionId/messages', sessionController.sendMessage);
-
-export default router;
-```
-
-### Response khi join session thành công
-```js
-res.json({
-  success: true,
-  data: {
-    token: '<livekit_jwt>',
-    livekit_url: process.env.LIVEKIT_URL,   // wss://dev-monitor.id.vn
-    room_name: session.livekit_room_id,
-  }
-});
-```
-
----
-
-## 5. LiveKit Room Lifecycle
-
-```js
-import { roomService } from '../config/livekit.js';
-
-// Tạo room trên LiveKit (optional — tự tạo khi có người join)
-export const createLiveKitRoom = async (roomName) => {
-  return roomService.createRoom({
-    name: roomName,
-    emptyTimeout: 300,   // tự xóa sau 5 phút không có ai
-    maxParticipants: 50,
-  });
-};
-
-// Xóa room khi end session
-export const deleteLiveKitRoom = async (roomName) => {
-  try {
-    await roomService.deleteRoom(roomName);
-  } catch (e) {
-    // Room có thể đã tự xóa nếu trống — bỏ qua lỗi
-    console.warn('deleteRoom warning:', e.message);
-  }
-};
-```
-
----
-
-## 6. Tips đặc thù cho học sinh khiếm thính
-
-- **Không tắt cam mặc định** — học sinh cần nhìn thấy nhau để đọc khẩu hình / ngôn ngữ ký hiệu
-- **`canPublishData: true`** — mở data channel, chuẩn bị cho caption realtime sau
-- **Gắn metadata vào token** để Flutter hiển thị đúng tên:
-  ```js
-  token.metadata = JSON.stringify({
-    name: user.full_name,  // cột full_name trong bảng users
-    role: userRole,        // 'teacher' | 'student'
-  });
-  ```
-- **`session_artifacts`** đã có `transcript_file_path` + `ai_summary_content (JSONB)` → sẵn sàng cho tính năng AI tóm tắt buổi học
-- **`messages`** đã có sẵn → không cần thêm bảng, chỉ cần viết API GET/POST là dùng được ngay
+- Không dùng Meilisearch — t3.micro 1GB RAM, Meilisearch ngốn ~200MB thường trực.
+- Không lưu question bank vào PostgreSQL — overkill, không cần CRUD qua API.
+- Không tách questions.json thành nhiều file theo topic — dataset chưa đủ lớn để cần thiết.
+- Không build Fuse index theo từng request — tốn CPU, không cần thiết.
+- Không dùng WebSocket cho chat — polling 5s đủ cho MVP.
+- Không expose MinIO URL trực tiếp — luôn qua presigned URL.
