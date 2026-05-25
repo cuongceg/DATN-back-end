@@ -9,8 +9,13 @@ const postsRoutes = require('./routes/posts.routes');
 const filesRoutes = require('./routes/files.routes');
 const webhookRoutes = require('./routes/webhook.routes');
 const recordingRoutes = require('./routes/recording.routes');
+const suggestionRoutes = require('./routes/suggestions');
+const { buildIndex } = require('./suggestion/loader');
 
 const app = express();
+
+// Build Fuse.js index once on startup (before app.listen()).
+buildIndex();
 
 // LiveKit webhooks must use raw body for signature verification.
 app.use('/api/webhooks', webhookRoutes);
@@ -29,6 +34,7 @@ app.use('/api/sessions', sessionRoutes);
 app.use('/api/posts', postsRoutes);
 app.use('/api/files', filesRoutes);
 app.use('/api', recordingRoutes);
+app.use('/api', suggestionRoutes);
 
 app.use((req, res) => {
   return res.status(404).json({ message: 'Route not found.' });
