@@ -174,6 +174,19 @@ CREATE TABLE IF NOT EXISTS session_recordings (
         ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS session_transcripts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    egress_id TEXT NOT NULL,
+    offset_ms INTEGER NOT NULL CHECK (offset_ms >= 0),
+    text TEXT NOT NULL,
+    speaker TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT fk_session_transcripts_egress
+        FOREIGN KEY (egress_id)
+        REFERENCES session_recordings(egress_id)
+        ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS folders (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     class_id UUID NOT NULL,
@@ -215,6 +228,7 @@ CREATE INDEX IF NOT EXISTS idx_session_artifacts_session_id ON session_artifacts
 CREATE INDEX IF NOT EXISTS idx_session_recordings_session_id ON session_recordings(session_id);
 CREATE INDEX IF NOT EXISTS idx_session_recordings_class_id ON session_recordings(class_id);
 CREATE INDEX IF NOT EXISTS idx_session_recordings_class_id_started_at ON session_recordings(class_id, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_transcripts_egress_id_offset ON session_transcripts(egress_id, offset_ms);
 CREATE INDEX IF NOT EXISTS idx_posts_class_id ON posts(class_id);
 CREATE INDEX IF NOT EXISTS idx_posts_author_id ON posts(author_id);
 CREATE INDEX IF NOT EXISTS idx_posts_session_id ON posts(session_id);
