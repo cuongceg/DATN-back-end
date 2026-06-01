@@ -13,7 +13,8 @@ async function saveTranscript(egressId, text, clientTimestampMs) {
   }
 
   const startedAtMs = new Date(rec.rows[0].started_at).getTime();
-  const offsetMs = Math.max(0, clientTimestampMs - startedAtMs);
+  const biasMs = Number(process.env.TRANSCRIPT_OFFSET_BIAS_MS || 0);
+  const offsetMs = Math.max(0, clientTimestampMs - startedAtMs - biasMs);
 
   await pool.query(
     `INSERT INTO session_transcripts (egress_id, offset_ms, text)
