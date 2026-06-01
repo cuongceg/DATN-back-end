@@ -25,6 +25,24 @@ async function handleLiveKitWebhook(req, res, next) {
     const rawBody = req.body;
     const event = await receiver.receive(rawBody, authHeader);
 
+    if (event?.event === 'room_finished') {
+      const roomValue = event.room;
+      const roomName = typeof roomValue === 'string'
+        ? roomValue
+        : (roomValue && typeof roomValue === 'object' ? (roomValue.name || roomValue.roomName) : null);
+
+      if (roomName) {
+        await pool.query(
+          `UPDATE sessions
+           SET status = 'completed',
+               end_time = COALESCE(end_time, NOW())
+           WHERE livekit_room_id = $1
+             AND status <> 'completed'`,
+          [roomName]
+        );
+      }
+    }
+
     if (event?.event === 'egress_ended') {
       const info = event.egressInfo || {};
       const egressId = info.egressId || info.egress_id;

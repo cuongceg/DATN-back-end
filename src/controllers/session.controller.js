@@ -233,7 +233,12 @@ async function joinSession(req, res, next) {
       `INSERT INTO session_participants (session_id, user_id, joined_at, left_at)
        VALUES ($1, $2, NOW(), NULL)
        ON CONFLICT (session_id, user_id)
-       DO UPDATE SET joined_at = NOW(), left_at = NULL`,
+       DO UPDATE SET
+         joined_at = CASE
+           WHEN session_participants.left_at IS NULL THEN session_participants.joined_at
+           ELSE NOW()
+         END,
+         left_at = NULL`,
       [sessionId, req.user.id]
     );
 
