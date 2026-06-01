@@ -14,6 +14,22 @@ const DEFAULT_PREFERENCES = {
 
 const ALLOWED_PREFERENCE_FIELDS = new Set(Object.keys(DEFAULT_PREFERENCES));
 
+function normalizePreferencesRow(row) {
+  if (!row) {
+    return row;
+  }
+
+  const bgOpacity = row.bg_opacity;
+  const parsedBgOpacity = bgOpacity === null || bgOpacity === undefined
+    ? bgOpacity
+    : Number(bgOpacity);
+
+  return {
+    ...row,
+    bg_opacity: Number.isNaN(parsedBgOpacity) ? bgOpacity : parsedBgOpacity,
+  };
+}
+
 function createCodedError(code, message) {
   const error = new Error(message);
   error.code = code;
@@ -33,7 +49,7 @@ async function getPreferences(userId) {
     };
   }
 
-  return result.rows[0];
+  return normalizePreferencesRow(result.rows[0]);
 }
 
 async function upsertPreferences(userId, fields) {
@@ -64,7 +80,7 @@ async function upsertPreferences(userId, fields) {
               RETURNING *`;
 
   const result = await pool.query(sql, [...insertValues, ...updateValues]);
-  return result.rows[0];
+  return normalizePreferencesRow(result.rows[0]);
 }
 
 async function listPresets(userId) {
