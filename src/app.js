@@ -11,6 +11,7 @@ const webhookRoutes = require('./routes/webhook.routes');
 const recordingRoutes = require('./routes/recording.routes');
 const reactionRoutes = require('./routes/reaction.routes');
 const suggestionRoutes = require('./routes/suggestions');
+const subtitlePreferencesRoutes = require('./routes/subtitlePreferences.routes');
 const { buildIndex } = require('./suggestion/loader');
 
 const app = express();
@@ -37,6 +38,7 @@ app.use('/api/files', filesRoutes);
 app.use('/api', recordingRoutes);
 app.use('/api', reactionRoutes);
 app.use('/api', suggestionRoutes);
+app.use('/api', subtitlePreferencesRoutes);
 
 app.use((req, res) => {
   return res.status(404).json({ message: 'Route not found.' });
