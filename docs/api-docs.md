@@ -1569,6 +1569,184 @@ Gợi ý câu hỏi (Fuse.js search, in-process).
 		- `401 { "message": "Authorization token is required." }`
 		- `401 { "message": "Invalid or expired token." }`
 		- `403 { "message": "Only teachers can list reactions." }`
+
+	---
+
+	### 4.10 Subtitle Preferences
+
+	Tính năng customize subtitle dành cho role `student`. Teacher/admin không được truy cập.
+
+	#### GET `/api/users/me/subtitle-preferences`
+
+	Lấy subtitle preferences của user hiện tại.
+
+	- Auth: Bắt buộc token
+	- Roles: `student`
+
+	- Success:
+		- `200`
+
+	Nếu user chưa có row trong DB, API trả về default values (không tạo row).
+
+```json
+{
+	"preferences": {
+		"user_id": "uuid",
+		"font_size": 20,
+		"font_family": "sans-serif",
+		"text_color": "#FFFFFF",
+		"bg_color": "#000000",
+		"bg_opacity": 0.65,
+		"max_lines": 2,
+		"position_preset": "bottom_center",
+		"width_pct": 80,
+		"display_duration_sec": 5,
+		"updated_at": "2026-06-01T10:00:00.000Z"
+	}
+}
+```
+
+	#### PUT `/api/users/me/subtitle-preferences`
+
+	Upsert subtitle preferences (partial update).
+
+	- Auth: Bắt buộc token
+	- Roles: `student`
+	- Body: chứa 1 hoặc nhiều field hợp lệ
+
+	- Validation:
+		- `font_size`: optional, 14–42
+		- `font_family`: optional, `sans-serif | monospace | OpenDyslexic`
+		- `text_color`: optional, hex `#RRGGBB`
+		- `bg_color`: optional, hex `#RRGGBB`
+		- `bg_opacity`: optional, 0.0–1.0
+		- `max_lines`: optional, 1–3
+		- `position_preset`: optional, `top_left | top_center | top_right | middle_left | middle_center | middle_right | bottom_left | bottom_center | bottom_right`
+		- `width_pct`: optional, 40–100
+		- `display_duration_sec`: optional, 1–8
+
+	- Success:
+		- `200`
+
+```json
+{
+	"preferences": {
+		"user_id": "uuid",
+		"font_size": 24,
+		"font_family": "sans-serif",
+		"text_color": "#FFFFFF",
+		"bg_color": "#000000",
+		"bg_opacity": 0.65,
+		"max_lines": 2,
+		"position_preset": "bottom_center",
+		"width_pct": 80,
+		"display_duration_sec": 5,
+		"updated_at": "2026-06-01T10:01:00.000Z"
+	}
+}
+```
+
+	- Error:
+		- `400 { "message": "No valid fields provided." }`
+
+	#### GET `/api/users/me/subtitle-presets`
+
+	Danh sách presets của user hiện tại.
+
+	- Auth: Bắt buộc token
+	- Roles: `student`
+
+	- Success:
+		- `200`
+
+```json
+{
+	"presets": [
+		{
+			"id": "uuid",
+			"name": "Ban ngày",
+			"settings": {
+				"font_size": 20,
+				"font_family": "sans-serif",
+				"text_color": "#FFFFFF",
+				"bg_color": "#000000",
+				"bg_opacity": 0.65,
+				"max_lines": 2,
+				"position_preset": "bottom_center",
+				"width_pct": 80,
+				"display_duration_sec": 5
+			},
+			"created_at": "2026-06-01T10:05:00.000Z"
+		}
+	]
+}
+```
+
+	#### POST `/api/users/me/subtitle-presets`
+
+	Tạo preset mới (tối đa 10 presets / user).
+
+	- Auth: Bắt buộc token
+	- Roles: `student`
+	- Body:
+
+```json
+{
+	"name": "Ban ngày",
+	"settings": {
+		"font_size": 20,
+		"font_family": "sans-serif",
+		"text_color": "#FFFFFF",
+		"bg_color": "#000000",
+		"bg_opacity": 0.65,
+		"max_lines": 2,
+		"position_preset": "bottom_center",
+		"width_pct": 80,
+		"display_duration_sec": 5
+	}
+}
+```
+
+	- Success:
+		- `201`
+
+```json
+{
+	"preset": {
+		"id": "uuid",
+		"name": "Ban ngày",
+		"settings": { "font_size": 20 },
+		"created_at": "2026-06-01T10:05:00.000Z"
+	}
+}
+```
+
+	- Error:
+		- `409 { "message": "Maximum 10 presets allowed." }`
+
+	#### DELETE `/api/users/me/subtitle-presets/:presetId`
+
+	Xóa preset của user hiện tại.
+
+	- Auth: Bắt buộc token
+	- Roles: `student`
+	- Path params:
+		- `presetId`: uuid
+
+	- Success:
+		- `200`
+
+```json
+{
+	"message": "Preset deleted successfully.",
+	"preset": {
+		"id": "uuid"
+	}
+}
+```
+
+	- Error:
+		- `404 { "message": "Preset not found." }`
 		- `403 { "message": "You do not have permission to access this session." }`
 		- `404 { "message": "Session not found." }`
 

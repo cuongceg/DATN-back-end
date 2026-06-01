@@ -20,6 +20,7 @@ const openapiSpec = {
     { name: 'Posts' },
     { name: 'Files' },
     { name: 'Suggestions' },
+    { name: 'Subtitle Preferences' },
   ],
   components: {
     securitySchemes: {
@@ -425,6 +426,94 @@ const openapiSpec = {
           raise_hand_count: { type: 'integer', minimum: 0 },
         },
       },
+
+      SubtitlePreferences: {
+        type: 'object',
+        required: [
+          'user_id',
+          'font_size',
+          'font_family',
+          'text_color',
+          'bg_color',
+          'bg_opacity',
+          'max_lines',
+          'position_preset',
+          'width_pct',
+          'display_duration_sec',
+        ],
+        properties: {
+          user_id: { type: 'string', format: 'uuid' },
+          font_size: { type: 'integer', minimum: 14, maximum: 42, default: 20 },
+          font_family: { type: 'string', enum: ['sans-serif', 'monospace', 'OpenDyslexic'], default: 'sans-serif' },
+          text_color: { type: 'string', example: '#FFFFFF', pattern: '^#[0-9A-Fa-f]{6}$' },
+          bg_color: { type: 'string', example: '#000000', pattern: '^#[0-9A-Fa-f]{6}$' },
+          bg_opacity: { type: 'number', minimum: 0, maximum: 1, default: 0.65 },
+          max_lines: { type: 'integer', minimum: 1, maximum: 3, default: 2 },
+          position_preset: {
+            type: 'string',
+            enum: [
+              'top_left',
+              'top_center',
+              'top_right',
+              'middle_left',
+              'middle_center',
+              'middle_right',
+              'bottom_left',
+              'bottom_center',
+              'bottom_right',
+            ],
+            default: 'bottom_center',
+          },
+          width_pct: { type: 'integer', minimum: 40, maximum: 100, default: 80 },
+          display_duration_sec: { type: 'integer', minimum: 1, maximum: 8, default: 5 },
+          updated_at: { type: 'string', format: 'date-time', nullable: true },
+        },
+      },
+      UpdateSubtitlePreferencesBody: {
+        type: 'object',
+        properties: {
+          font_size: { type: 'integer', minimum: 14, maximum: 42 },
+          font_family: { type: 'string', enum: ['sans-serif', 'monospace', 'OpenDyslexic'] },
+          text_color: { type: 'string', pattern: '^#[0-9A-Fa-f]{6}$' },
+          bg_color: { type: 'string', pattern: '^#[0-9A-Fa-f]{6}$' },
+          bg_opacity: { type: 'number', minimum: 0, maximum: 1 },
+          max_lines: { type: 'integer', minimum: 1, maximum: 3 },
+          position_preset: {
+            type: 'string',
+            enum: [
+              'top_left',
+              'top_center',
+              'top_right',
+              'middle_left',
+              'middle_center',
+              'middle_right',
+              'bottom_left',
+              'bottom_center',
+              'bottom_right',
+            ],
+          },
+          width_pct: { type: 'integer', minimum: 40, maximum: 100 },
+          display_duration_sec: { type: 'integer', minimum: 1, maximum: 8 },
+        },
+      },
+      SubtitlePreset: {
+        type: 'object',
+        required: ['id', 'name', 'settings', 'created_at'],
+        properties: {
+          id: { type: 'string', format: 'uuid' },
+          name: { type: 'string', maxLength: 100 },
+          settings: { type: 'object', additionalProperties: true },
+          created_at: { type: 'string', format: 'date-time' },
+        },
+      },
+      CreateSubtitlePresetBody: {
+        type: 'object',
+        required: ['name', 'settings'],
+        properties: {
+          name: { type: 'string', maxLength: 100 },
+          settings: { type: 'object', additionalProperties: true },
+        },
+      },
     },
   },
   paths: {
@@ -493,6 +582,208 @@ const openapiSpec = {
           },
           401: {
             description: 'Invalid credentials',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+        },
+      },
+    },
+
+    '/api/users/me/subtitle-preferences': {
+      get: {
+        tags: ['Subtitle Preferences'],
+        summary: 'Get my subtitle preferences (student only)',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          200: {
+            description: 'Preferences returned (defaults if not stored)',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    preferences: { $ref: '#/components/schemas/SubtitlePreferences' },
+                  },
+                },
+              },
+            },
+          },
+          401: {
+            description: 'Unauthenticated',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          403: {
+            description: 'Forbidden',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+        },
+      },
+      put: {
+        tags: ['Subtitle Preferences'],
+        summary: 'Upsert my subtitle preferences (student only)',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/UpdateSubtitlePreferencesBody' },
+            },
+          },
+        },
+        responses: {
+          200: {
+            description: 'Preferences updated',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    preferences: { $ref: '#/components/schemas/SubtitlePreferences' },
+                  },
+                },
+              },
+            },
+          },
+          400: {
+            description: 'Validation error',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          401: {
+            description: 'Unauthenticated',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          403: {
+            description: 'Forbidden',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+        },
+      },
+    },
+
+    '/api/users/me/subtitle-presets': {
+      get: {
+        tags: ['Subtitle Preferences'],
+        summary: 'List my subtitle presets (student only)',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          200: {
+            description: 'List presets',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    presets: {
+                      type: 'array',
+                      items: { $ref: '#/components/schemas/SubtitlePreset' },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          401: {
+            description: 'Unauthenticated',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          403: {
+            description: 'Forbidden',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+        },
+      },
+      post: {
+        tags: ['Subtitle Preferences'],
+        summary: 'Create a subtitle preset (max 10) (student only)',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/CreateSubtitlePresetBody' },
+            },
+          },
+        },
+        responses: {
+          201: {
+            description: 'Preset created',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    preset: { $ref: '#/components/schemas/SubtitlePreset' },
+                  },
+                },
+              },
+            },
+          },
+          400: {
+            description: 'Validation error',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          401: {
+            description: 'Unauthenticated',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          403: {
+            description: 'Forbidden',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          409: {
+            description: 'Preset limit exceeded',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+        },
+      },
+    },
+
+    '/api/users/me/subtitle-presets/{presetId}': {
+      delete: {
+        tags: ['Subtitle Preferences'],
+        summary: 'Delete my subtitle preset (student only)',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            in: 'path',
+            name: 'presetId',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          200: {
+            description: 'Preset deleted',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    message: { type: 'string', example: 'Preset deleted successfully.' },
+                    preset: {
+                      type: 'object',
+                      properties: {
+                        id: { type: 'string', format: 'uuid' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          400: {
+            description: 'Validation error',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          401: {
+            description: 'Unauthenticated',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          403: {
+            description: 'Forbidden',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          },
+          404: {
+            description: 'Preset not found',
             content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
           },
         },
