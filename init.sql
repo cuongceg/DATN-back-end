@@ -248,3 +248,45 @@ CREATE TABLE IF NOT EXISTS session_reactions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_session_reactions_session_id ON session_reactions(session_id);
+
+CREATE TABLE IF NOT EXISTS subtitle_preferences (
+    user_id             UUID PRIMARY KEY,
+    font_size           SMALLINT NOT NULL DEFAULT 20,
+    font_family         VARCHAR(50) NOT NULL DEFAULT 'sans-serif',
+    text_color          VARCHAR(7) NOT NULL DEFAULT '#FFFFFF',
+    bg_color            VARCHAR(7) NOT NULL DEFAULT '#000000',
+    bg_opacity          NUMERIC(3,2) NOT NULL DEFAULT 0.65,
+    max_lines           SMALLINT NOT NULL DEFAULT 2,
+    position_preset     VARCHAR(20) NOT NULL DEFAULT 'bottom_center',
+    width_pct           SMALLINT NOT NULL DEFAULT 80,
+    display_duration_sec SMALLINT NOT NULL DEFAULT 5,
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT fk_subtitle_pref_user
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT chk_font_size CHECK (font_size BETWEEN 14 AND 42),
+    CONSTRAINT chk_font_family CHECK (font_family IN ('sans-serif','monospace','OpenDyslexic')),
+    CONSTRAINT chk_text_color CHECK (text_color ~ '^#[0-9A-Fa-f]{6}$'),
+    CONSTRAINT chk_bg_color CHECK (bg_color ~ '^#[0-9A-Fa-f]{6}$'),
+    CONSTRAINT chk_bg_opacity CHECK (bg_opacity BETWEEN 0.0 AND 1.0),
+    CONSTRAINT chk_max_lines CHECK (max_lines BETWEEN 1 AND 3),
+    CONSTRAINT chk_position_preset CHECK (position_preset IN (
+        'top_left','top_center','top_right',
+        'middle_left','middle_center','middle_right',
+        'bottom_left','bottom_center','bottom_right'
+    )),
+    CONSTRAINT chk_width_pct CHECK (width_pct BETWEEN 40 AND 100),
+    CONSTRAINT chk_display_duration CHECK (display_duration_sec BETWEEN 1 AND 8)
+);
+
+CREATE TABLE IF NOT EXISTS subtitle_presets (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id     UUID NOT NULL,
+    name        VARCHAR(100) NOT NULL,
+    settings    JSONB NOT NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT fk_subtitle_preset_user
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_subtitle_presets_user_id
+    ON subtitle_presets(user_id, created_at ASC);
