@@ -1,7 +1,8 @@
-const pool = require('../config/db');
 const { egressClient } = require('../config/livekit');
 const { minioClient, RECORDING_BUCKET_NAME } = require('./minio.client');
 const { EncodedFileOutput, EncodedFileType, S3Upload } = require('livekit-server-sdk');
+const sessionsModel = require('../models/sessions.model');
+const recordingsModel = require('../models/recordings.model');
 
 const RECORDING_EXPIRES_IN_SECONDS = 4 * 60 * 60;
 
@@ -12,29 +13,16 @@ function createHttpError(status, message) {
 }
 
 async function startRecording(sessionId, startedByUserId) {
-  const sessionResult = await pool.query(
-    'SELECT id, livekit_room_id, status, class_id, title FROM sessions WHERE id = $1',
-    [sessionId]
-  );
-
-  if (sessionResult.rows.length === 0) {
+  const session = await sessionsModel.findById(sessionId);
+  if (!session) {
     throw createHttpError(404, 'Session not found.');
   }
-
-  const session = sessionResult.rows[0];
   if (session.status !== 'ongoing' || !session.livekit_room_id) {
     throw createHttpError(400, 'Session is not ongoing.');
   }
 
-  const runningResult = await pool.query(
-    `SELECT 1
-     FROM session_recordings
-     WHERE session_id = $1 AND status = 'recording'
-     LIMIT 1`,
-    [sessionId]
-  );
-
-  if (runningResult.rows.length > 0) {
+  const isRunning = await recordingsModel.findRunningBySession(sessionId);
+  if (isRunning) {
     throw createHttpError(409, 'A recording is already in progress.');
   }
 
@@ -42,7 +30,7 @@ async function startRecording(sessionId, startedByUserId) {
   const minioPort = Number(process.env.MINIO_PORT || 9000);
   const minioUseSsl = String(process.env.MINIO_USE_SSL || 'false').toLowerCase() === 'true';
   const minioEndpointUrl = `${minioUseSsl ? 'https' : 'http'}://${minioHost}:${minioPort}`;
-  const classId = session.class_id;
+
   const sessionTitle = String(session.title || 'session')
     .trim()
     .replace(/[^a-zA-Z0-9-_]+/g, '-')
@@ -56,7 +44,7 @@ async function startRecording(sessionId, startedByUserId) {
   const min = String(now.getMinutes()).padStart(2, '0');
   const datePath = `${dd}-${mm}-${yyyy}-${hh}-${min}`;
 
-  const filePath = `recordings/${classId}/${sessionTitle}-recording-${datePath}.mp4`;
+  const filePath = `recordings/${session.class_id}/${sessionTitle}-recording-${datePath}.mp4`;
 
   const fileOutput = new EncodedFileOutput({
     fileType: EncodedFileType.MP4,
@@ -74,14 +62,10 @@ async function startRecording(sessionId, startedByUserId) {
     },
   });
 
-  const options = {
-    layout: 'speaker',
-  };
-
   const egressInfo = await egressClient.startRoomCompositeEgress(
     session.livekit_room_id,
     { file: fileOutput },
-    options
+    { layout: 'speaker' }
   );
 
   console.log('egressInfo:', JSON.stringify(egressInfo, null, 2));
@@ -91,63 +75,28 @@ async function startRecording(sessionId, startedByUserId) {
     throw createHttpError(500, 'Unable to start recording.');
   }
 
-  const insertResult = await pool.query(
-    `INSERT INTO session_recordings (session_id, class_id, egress_id, status, started_by)
-     VALUES ($1, $2, $3, 'recording', $4)
-     RETURNING id, egress_id, started_at`,
-    [sessionId, session.class_id, egressId, startedByUserId]
-  );
-
-  return insertResult.rows[0];
+  return recordingsModel.create(sessionId, session.class_id, egressId, startedByUserId);
 }
 
 async function stopRecording(sessionId, egressId) {
-  const recordResult = await pool.query(
-    `SELECT id, session_id, egress_id
-     FROM session_recordings
-     WHERE session_id = $1 AND egress_id = $2`,
-    [sessionId, egressId]
-  );
-
-  if (recordResult.rows.length === 0) {
+  const record = await recordingsModel.findBySessionAndEgress(sessionId, egressId);
+  if (!record) {
     throw createHttpError(404, 'Recording not found.');
   }
 
   await egressClient.stopEgress(egressId);
-
-  await pool.query(
-    `UPDATE session_recordings
-     SET status = 'stopping'
-     WHERE session_id = $1 AND egress_id = $2`,
-    [sessionId, egressId]
-  );
+  await recordingsModel.updateStopping(sessionId, egressId);
 
   return { egress_id: egressId, status: 'stopping' };
 }
 
 async function listRecordings(classId) {
-  const result = await pool.query(
-    `SELECT id,
-            session_id,
-            egress_id,
-            s3_key,
-            duration_seconds,
-            started_at,
-            ended_at
-     FROM session_recordings
-     WHERE class_id = $1 AND status = 'completed'
-     ORDER BY started_at DESC, id DESC`,
-    [classId]
-  );
+  const rows = await recordingsModel.listCompleted(classId);
 
-  const recordings = await Promise.all(
-    result.rows.map(async (row) => {
+  return Promise.all(
+    rows.map(async (row) => {
       const downloadUrl = row.s3_key
-        ? await minioClient.presignedGetObject(
-          RECORDING_BUCKET_NAME,
-          row.s3_key,
-          RECORDING_EXPIRES_IN_SECONDS
-        )
+        ? await minioClient.presignedGetObject(RECORDING_BUCKET_NAME, row.s3_key, RECORDING_EXPIRES_IN_SECONDS)
         : null;
 
       return {
@@ -162,12 +111,10 @@ async function listRecordings(classId) {
       };
     })
   );
-
-  return recordings;
 }
 
-module.exports = {
-  startRecording,
-  stopRecording,
-  listRecordings,
-};
+async function recordingExists(sessionId, egressId) {
+  return recordingsModel.checkExists(sessionId, egressId);
+}
+
+module.exports = { startRecording, stopRecording, listRecordings, recordingExists };

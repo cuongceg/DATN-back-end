@@ -1,22 +1,14 @@
-const pool = require('../config/db');
+const sessionsModel = require('../models/sessions.model');
 const reactionModel = require('../models/reaction.model');
 
 async function getSessionForReaction(sessionId) {
-  const result = await pool.query(
-    `SELECT s.id, s.status, c.teacher_id
-     FROM sessions s
-     JOIN classes c ON c.id = s.class_id
-     WHERE s.id = $1`,
-    [sessionId]
-  );
-
-  if (result.rows.length === 0) {
+  const session = await sessionsModel.findWithClass(sessionId);
+  if (!session) {
     const error = new Error('Session not found.');
     error.status = 404;
     throw error;
   }
-
-  return result.rows[0];
+  return session;
 }
 
 async function verifyRequesterCanAccessSession(sessionId, requesterId) {
@@ -26,14 +18,8 @@ async function verifyRequesterCanAccessSession(sessionId, requesterId) {
     return { session, role: 'teacher' };
   }
 
-  const participantResult = await pool.query(
-    `SELECT 1
-     FROM session_participants
-     WHERE session_id = $1 AND user_id = $2`,
-    [sessionId, requesterId]
-  );
-
-  if (participantResult.rows.length === 0) {
+  const participant = await sessionsModel.findParticipant(sessionId, requesterId);
+  if (!participant) {
     const error = new Error('You do not have permission to access this session.');
     error.status = 403;
     throw error;
@@ -64,8 +50,4 @@ async function listReactions(sessionId, requesterId) {
   return reactionModel.getReactionsBySession(sessionId);
 }
 
-module.exports = {
-  setReaction,
-  clearReaction,
-  listReactions,
-};
+module.exports = { setReaction, clearReaction, listReactions };

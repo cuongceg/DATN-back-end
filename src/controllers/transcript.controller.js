@@ -1,12 +1,11 @@
-const pool = require('../config/db');
 const sessionService = require('../services/session.service');
 const transcriptService = require('../services/transcript.service');
+const recordingService = require('../services/recording.service');
 
 function handleServiceError(res, error, next) {
   if (error && error.status) {
     return res.status(error.status).json({ message: error.message });
   }
-
   return next(error);
 }
 
@@ -33,11 +32,7 @@ async function saveTranscript(req, res, next) {
     }
 
     const result = await transcriptService.saveTranscript(egressId.trim(), text, clientTimestampMs);
-
-    return res.status(200).json({
-      message: 'Transcript saved.',
-      result,
-    });
+    return res.status(200).json({ message: 'Transcript saved.', result });
   } catch (error) {
     return handleServiceError(res, error, next);
   }
@@ -56,15 +51,8 @@ async function getTranscript(req, res, next) {
       return res.status(403).json({ message: 'Forbidden: insufficient permissions.' });
     }
 
-    const recordingExists = await pool.query(
-      `SELECT 1
-       FROM session_recordings
-       WHERE session_id = $1 AND egress_id = $2
-       LIMIT 1`,
-      [sessionId, egressId.trim()]
-    );
-
-    if (recordingExists.rows.length === 0) {
+    const exists = await recordingService.recordingExists(sessionId, egressId.trim());
+    if (!exists) {
       return res.status(404).json({ message: 'Recording not found.' });
     }
 
@@ -75,7 +63,4 @@ async function getTranscript(req, res, next) {
   }
 }
 
-module.exports = {
-  saveTranscript,
-  getTranscript,
-};
+module.exports = { saveTranscript, getTranscript };
