@@ -1,10 +1,6 @@
-const brevo = require('@getbrevo/brevo');
+const { BrevoClient } = require('@getbrevo/brevo');
 
-const apiInstance = new brevo.TransactionalEmailsApi();
-apiInstance.setApiKey(
-  brevo.TransactionalEmailsApiApiKeys.apiKey,
-  process.env.BREVO_API_KEY
-);
+const client = new BrevoClient({ apiKey: process.env.BREVO_API_KEY });
 
 function formatDateTime(isoString) {
   if (!isoString) return '';
@@ -46,21 +42,21 @@ async function sendSessionScheduledEmail({ toList, session, className, teacherNa
   const senderName = process.env.BREVO_SENDER_NAME || 'EduApp';
 
   const results = await Promise.allSettled(
-    toList.map(({ email, name }) => {
-      const sendSmtpEmail = new brevo.SendSmtpEmail();
-      sendSmtpEmail.subject = `[${className}] Lịch học mới: ${session.title}`;
-      sendSmtpEmail.htmlContent = buildEmailHtml({
-        recipientName: name,
-        className,
-        sessionTitle: session.title,
-        scheduledAt: session.scheduled_at,
-        scheduledEndAt: session.scheduled_end_at,
-        teacherName,
-      });
-      sendSmtpEmail.sender = { name: senderName, email: senderEmail };
-      sendSmtpEmail.to = [{ email, name }];
-      return apiInstance.sendTransacEmail(sendSmtpEmail);
-    })
+    toList.map(({ email, name }) =>
+      client.transactionalEmails.sendTransacEmail({
+        subject: `[${className}] Lịch học mới: ${session.title}`,
+        htmlContent: buildEmailHtml({
+          recipientName: name,
+          className,
+          sessionTitle: session.title,
+          scheduledAt: session.scheduled_at,
+          scheduledEndAt: session.scheduled_end_at,
+          teacherName,
+        }),
+        sender: { name: senderName, email: senderEmail },
+        to: [{ email, name }],
+      })
+    )
   );
 
   const sent = results.filter((r) => r.status === 'fulfilled').length;
